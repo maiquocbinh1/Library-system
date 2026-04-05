@@ -1,0 +1,19 @@
+{
+  "name": "books-library-mysql-to-mongo-migration",
+  "version": "1.0.0",
+  "description": "Migrate MySQL books database to MongoDB Atlas (users, products, apiKeys, historyBooks, otps)",
+  "main": "migrate.js",
+  "type": "commonjs",
+  "scripts": {
+    "migrate": "node migrate.js",
+    "migrate:dry": "node migrate.js --dry-run"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mongoose": "^8.9.3",
+    "mysql2": "^3.11.0"
+  }
+}
