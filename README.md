@@ -70,7 +70,6 @@ Mở trình duyệt theo URL Vite in ra (thường `http://localhost:5173`).
 | `FE/` | Giao diện React (Vite) |
 | `server/` | API Express |
 | `mysql/init/` | Script SQL khởi tạo |
-| `mongo-migration/` | Script migrate MySQL → Mongo (tùy chọn) |
 
 ## Ghi chú
 
