@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Input, Modal, Form, Select } from 'antd';
-import { requestDeleteUser, requestGetAllUsers, requestUpdateUser, requestUpdateUserAdmin } from '../../config/request';
+import { requestDeleteUser, requestGetAllUsers, requestUpdateUserAdmin } from '../../config/request';
 
 const { Search } = Input;
 
@@ -50,7 +50,12 @@ const UserManagement = () => {
 
     const fetchData = async () => {
         const res = await requestGetAllUsers();
-        setData(res.metadata);
+        const list = Array.isArray(res?.metadata) ? res.metadata : [];
+        const normalized = list.map((item) => ({
+            ...item,
+            id: item?.id || item?.mysqlId || (item?._id ? String(item._id) : undefined),
+        }));
+        setData(normalized);
     };
 
     useEffect(() => {
@@ -90,11 +95,11 @@ const UserManagement = () => {
                 <h2 className="text-2xl font-bold">Quản lý người dùng</h2>
             </div>
             <Search placeholder="Tìm kiếm người dùng" onSearch={() => {}} style={{ width: 300, marginBottom: 16 }} />
-            <Table columns={columns} dataSource={data} rowKey="id" />
+            <Table columns={columns} dataSource={data} rowKey={(record) => record.id || record.email} />
 
             <Modal
                 title="Sửa thông tin người dùng"
-                visible={isEditModalVisible}
+                open={isEditModalVisible}
                 onOk={handleUpdateUser}
                 onCancel={() => {
                     setIsEditModalVisible(false);
@@ -130,7 +135,7 @@ const UserManagement = () => {
 
             <Modal
                 title="Xóa người dùng"
-                visible={isDeleteModalVisible}
+                open={isDeleteModalVisible}
                 onOk={handleDeleteUser}
                 onCancel={() => {
                     setIsDeleteModalVisible(false);

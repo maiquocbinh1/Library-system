@@ -140,7 +140,12 @@ const BookManagement = () => {
         try {
             setLoading(true);
             const res = await requestGetAllProduct();
-            setData(res.metadata);
+            const list = Array.isArray(res?.metadata) ? res.metadata : [];
+            const normalized = list.map((item) => ({
+                ...item,
+                id: item?.id || item?.mysqlId || (item?._id ? String(item._id) : undefined),
+            }));
+            setData(normalized);
         } catch (error) {
             console.error('Failed to fetch books:', error);
             message.error('Không thể tải dữ liệu sách');
@@ -347,7 +352,7 @@ const BookManagement = () => {
             <Table
                 columns={columns}
                 dataSource={data}
-                rowKey="id"
+                rowKey={(record) => record.id || record.nameProduct}
                 loading={loading}
                 pagination={{
                     pageSize: 10,

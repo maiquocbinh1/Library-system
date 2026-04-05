@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Row, Col, Card, Statistic } from 'antd';
-import { Pie, Column } from '@ant-design/charts';
+import { Column } from '@ant-design/charts';
 import { UserOutlined, BookOutlined, SolutionOutlined } from '@ant-design/icons';
 import { requestStatistics } from '../../config/request';
 
@@ -10,42 +10,23 @@ const Statistics = () => {
     useEffect(() => {
         const fetchData = async () => {
             const res = await requestStatistics();
-            setData(res);
+            const payload = res?.metadata ?? res ?? {};
+            setData(payload);
         };
         fetchData();
     }, []);
 
-    const bookStatusData = data?.bookStatusData;
-
-    const loanStatusData = data?.loanStatusData;
-
-    const pieConfig = {
-        appendPadding: 10,
-        data: bookStatusData,
-        angleField: 'value',
-        colorField: 'type',
-        radius: 0.8,
-        label: {
-            type: 'inner',
-            offset: '-50%',
-            content: '{value}',
-            style: {
-                textAlign: 'center',
-                fontSize: 14,
-            },
-        },
-        interactions: [{ type: 'element-active' }],
-    };
+    const loanStatusData = Array.isArray(data?.loanStatusData) ? data.loanStatusData : [];
 
     const columnConfig = {
         data: loanStatusData,
         xField: 'status',
         yField: 'count',
         label: {
-            position: 'middle',
+            position: 'top',
             style: {
-                fill: '#FFFFFF',
-                opacity: 0.6,
+                fill: '#595959',
+                opacity: 0.9,
             },
         },
         xAxis: {
@@ -83,7 +64,11 @@ const Statistics = () => {
             <Row gutter={24}>
                 <Col span={24}>
                     <Card title="Tình trạng mượn sách">
-                        <Column {...columnConfig} />
+                        {loanStatusData.length > 0 ? (
+                            <Column {...columnConfig} />
+                        ) : (
+                            <div className="text-gray-500">Chưa có dữ liệu thống kê</div>
+                        )}
                     </Card>
                 </Col>
             </Row>
