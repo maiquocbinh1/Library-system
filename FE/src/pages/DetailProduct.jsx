@@ -1,30 +1,118 @@
 import { useEffect } from 'react';
 import Footer from '../components/Footer';
 import Header from '../components/Header';
-import { Link, useParams } from 'react-router-dom';
-import { requestGetOneProduct } from '../config/request';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { requestGetBookshelf, requestGetOneProduct, requestToggleFavorite, requestToggleReadLater } from '../config/request';
 import { useState } from 'react';
+import { Button, message, Tooltip } from 'antd';
+import { HeartFilled, HeartOutlined, BookFilled, BookOutlined } from '@ant-design/icons';
 
 import ModalBorrowBook from '../components/ModalBuyBook';
 import { useStore } from '../hooks/useStore';
 
 function DetailProduct() {
     const { id } = useParams();
+    const navigate = useNavigate();
     const [dataProduct, setDataProduct] = useState({});
     const [visible, setVisible] = useState(false);
+    const [isFavorite, setIsFavorite] = useState(false);
+    const [isReadLater, setIsReadLater] = useState(false);
+    const [loadingFavorite, setLoadingFavorite] = useState(false);
+    const [loadingReadLater, setLoadingReadLater] = useState(false);
 
     const { dataUser } = useStore();
+    const productImageSrc = dataProduct?.image?.startsWith('http')
+        ? dataProduct.image
+        : `${import.meta.env.VITE_API_URL_IMAGE}/${dataProduct?.image || ''}`;
+
+    const normalizeProduct = (product) => {
+        if (!product || typeof product !== 'object') return {};
+        return {
+            ...product,
+            id: product.id || product.mysqlId || (product._id ? String(product._id) : undefined),
+        };
+    };
+
+    const findInBooks = (books, productId) => {
+        const targetId = String(productId);
+        return (books || []).some((book) => {
+            const bookId = String(book?.id || book?.mysqlId || book?._id || '');
+            return bookId === targetId;
+        });
+    };
+
+    const fetchBookshelfStatus = async (productId) => {
+        if (!dataUser?.id || !productId) return;
+        try {
+            const res = await requestGetBookshelf();
+            const payload = res?.metadata || {};
+            setIsFavorite(findInBooks(payload.favoriteBooks, productId));
+            setIsReadLater(findInBooks(payload.readLaterBooks, productId));
+        } catch (error) {
+            setIsFavorite(false);
+            setIsReadLater(false);
+        }
+    };
 
     useEffect(() => {
         const fetchData = async () => {
-            const res = await requestGetOneProduct(id);
-            setDataProduct(res.metadata);
+            try {
+                const res = await requestGetOneProduct(id);
+                const product = normalizeProduct(res?.metadata);
+                setDataProduct(product);
+                await fetchBookshelfStatus(product?.id || id);
+            } catch (error) {
+                message.error('Không thể tải chi tiết sách');
+            }
         };
         fetchData();
-    }, [id]);
+    }, [id, dataUser?.id]);
 
     const showModal = async () => {
         setVisible(true);
+    };
+
+    const ensureLoggedIn = () => {
+        if (dataUser?.id) return true;
+        message.warning('Vui lòng đăng nhập để sử dụng tủ sách');
+        navigate('/login');
+        return false;
+    };
+
+    const handleToggleFavorite = async () => {
+        if (!ensureLoggedIn()) return;
+        const productId = dataProduct?.id || id;
+        if (!productId) return;
+
+        setLoadingFavorite(true);
+        try {
+            const res = await requestToggleFavorite(productId);
+            const nextState = Boolean(res?.metadata?.isFavorite);
+            setIsFavorite(nextState);
+            message.success(nextState ? 'Đã thêm vào yêu thích' : 'Đã bỏ khỏi yêu thích');
+        } catch (error) {
+            message.error(error?.response?.data?.message || 'Không thể cập nhật yêu thích');
+        } finally {
+            setLoadingFavorite(false);
+        }
+    };
+
+    const handleToggleReadLater = async () => {
+        if (!ensureLoggedIn()) return;
+        const productId = dataProduct?.id || id;
+        if (!productId) return;
+
+        setLoadingReadLater(true);
+        try {
+            const res = await requestToggleReadLater(productId);
+            const nextState = Boolean(res?.metadata?.isReadLater);
+            setIsReadLater(nextState);
+            message.success(nextState ? 'Đã thêm vào đọc sau' : 'Đã bỏ khỏi đọc sau');
+        } catch (error) {
+            message.error(error?.response?.data?.message || 'Không thể cập nhật đọc sau');
+        } finally {
+            setLoadingReadLater(false);
+        }
     };
 
     if (!dataUser) return <div>loading....</div>;
@@ -49,9 +137,12 @@ function DetailProduct() {
                         <div className="flex justify-center">
                             <div className="w-full max-w-xs">
                                 <img
-                                    src={`${import.meta.env.VITE_API_URL_IMAGE}/${dataProduct.image}`}
+                                    src={productImageSrc}
                                     alt={dataProduct.nameProduct}
                                     className="w-full h-auto rounded-lg shadow-md"
+                                    onError={(e) => {
+                                        e.currentTarget.src = '/placeholder-avatar.png';
+                                    }}
                                 />
                             </div>
                         </div>
@@ -77,7 +168,7 @@ function DetailProduct() {
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Loại bìa:</span>
                                         <span className="font-medium text-gray-800">
-                                            {dataProduct.coverType === 'hard' ? 'Bìa cứng' : 'Bìa mềm'}
+                                            {dataProduct.covertType === 'hard' ? 'Bìa cứng' : 'Bìa mềm'}
                                         </span>
                                     </div>
                                     <div className="flex justify-between">
@@ -109,6 +200,26 @@ function DetailProduct() {
                                 >
                                     Mượn ngay
                                 </button>
+                                <div className="flex items-center gap-3">
+                                    <Tooltip title="Thêm/Bỏ yêu thích">
+                                        <Button
+                                            icon={isFavorite ? <HeartFilled className="text-red-500" /> : <HeartOutlined />}
+                                            onClick={handleToggleFavorite}
+                                            loading={loadingFavorite}
+                                        >
+                                            Yêu thích
+                                        </Button>
+                                    </Tooltip>
+                                    <Tooltip title="Thêm/Bỏ đọc sau">
+                                        <Button
+                                            icon={isReadLater ? <BookFilled className="text-yellow-500" /> : <BookOutlined />}
+                                            onClick={handleToggleReadLater}
+                                            loading={loadingReadLater}
+                                        >
+                                            Đọc sau
+                                        </Button>
+                                    </Tooltip>
+                                </div>
                             </div>
                         </div>
                     </div>

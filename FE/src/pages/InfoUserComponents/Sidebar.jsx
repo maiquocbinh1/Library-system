@@ -1,6 +1,6 @@
 import React from 'react';
 import { Menu } from 'antd';
-import { UserOutlined, HistoryOutlined, LogoutOutlined } from '@ant-design/icons';
+import { UserOutlined, HistoryOutlined, LogoutOutlined, BookOutlined } from '@ant-design/icons';
 
 const Sidebar = ({ setActiveComponent, activeComponent }) => {
     const handleLogout = () => {};
@@ -17,6 +17,12 @@ const Sidebar = ({ setActiveComponent, activeComponent }) => {
             icon: <HistoryOutlined />,
             label: 'Lịch sử mượn sách',
             onClick: () => setActiveComponent('history'),
+        },
+        {
+            key: 'bookshelf',
+            icon: <BookOutlined />,
+            label: 'Tủ sách của tôi',
+            onClick: () => setActiveComponent('bookshelf'),
         },
         {
             key: 'logout',

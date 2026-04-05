@@ -168,3 +168,19 @@ export const requestUpdateStatusBook = async (data) => {
     const res = await apiClient.post(`${apiHistoryBook}/update-status-book`, data);
     return res.data;
 };
+
+const apiBookshelf = '/api/bookshelf';
+export const requestGetBookshelf = async () => {
+    const res = await apiClient.get(`${apiBookshelf}`);
+    return res.data;
+};
+
+export const requestToggleFavorite = async (productId) => {
+    const res = await apiClient.post(`${apiBookshelf}/toggle-favorite`, { productId });
+    return res.data;
+};
+
+export const requestToggleReadLater = async (productId) => {
+    const res = await apiClient.post(`${apiBookshelf}/toggle-read-later`, { productId });
+    return res.data;
+};
