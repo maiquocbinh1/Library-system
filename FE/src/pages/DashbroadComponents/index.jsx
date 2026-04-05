@@ -18,6 +18,14 @@ const components = {
     book: <BookManagement />,
 };
 
+const menuItems = [
+    { key: 'stats', icon: <LineChartOutlined />, label: 'Thống kê' },
+    { key: 'book', icon: <BookOutlined />, label: 'Quản lý sách' },
+    { key: 'loan', icon: <SolutionOutlined />, label: 'Quản lý mượn sách' },
+    { key: 'card', icon: <IdcardOutlined />, label: 'Quản lý cấp thẻ' },
+    { key: 'user', icon: <UserOutlined />, label: 'Quản lý người dùng' },
+];
+
 const IndexDashBroad = () => {
     const [selectedKey, setSelectedKey] = useState('stats');
 
@@ -29,23 +37,13 @@ const IndexDashBroad = () => {
         <Layout style={{ minHeight: '100vh' }}>
             <Sider breakpoint="lg" collapsedWidth="0">
                 <div className="h-8 m-4 bg-gray-700 text-white text-center leading-8">Logo</div>
-                <Menu theme="dark" mode="inline" defaultSelectedKeys={['stats']} onClick={(e) => setSelectedKey(e.key)}>
-                    <Menu.Item key="stats" icon={<LineChartOutlined />}>
-                        Thống kê
-                    </Menu.Item>
-                    <Menu.Item key="book" icon={<BookOutlined />}>
-                        Quản lý sách
-                    </Menu.Item>
-                    <Menu.Item key="loan" icon={<SolutionOutlined />}>
-                        Quản lý mượn sách
-                    </Menu.Item>
-                    <Menu.Item key="card" icon={<IdcardOutlined />}>
-                        Quản lý cấp thẻ
-                    </Menu.Item>
-                    <Menu.Item key="user" icon={<UserOutlined />}>
-                        Quản lý người dùng
-                    </Menu.Item>
-                </Menu>
+                <Menu
+                    theme="dark"
+                    mode="inline"
+                    items={menuItems}
+                    selectedKeys={[selectedKey]}
+                    onClick={(e) => setSelectedKey(e.key)}
+                />
             </Sider>
             <Layout>
                 <Header className="bg-white p-0" />

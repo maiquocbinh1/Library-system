@@ -20,9 +20,6 @@ function Header() {
         try {
             await requestLogout();
             navigate('/');
-            setTimeout(() => {
-                window.location.reload();
-            }, 1000);
         } catch (error) {
             console.error('Failed to logout:', error);
         }

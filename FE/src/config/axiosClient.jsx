@@ -17,6 +17,20 @@ export class ApiClient {
         this.setupInterceptors();
     }
 
+    isAuthEndpoint(url = '') {
+        return (
+            url.includes('/api/user/login') ||
+            url.includes('/api/user/register') ||
+            url.includes('/api/user/refresh-token') ||
+            url.includes('/api/user/logout')
+        );
+    }
+
+    shouldRedirectToLogin() {
+        const protectedPaths = ['/infoUser', '/admin'];
+        return protectedPaths.some((path) => window.location.pathname.startsWith(path));
+    }
+
     setupInterceptors() {
         this.axiosInstance.interceptors.request.use(
             (config) => config,
@@ -28,8 +42,7 @@ export class ApiClient {
             async (error) => {
                 const originalRequest = error.config;
                 if (error.response?.status === 401 && !originalRequest._retry) {
-                    if (!this.isLoggedIn()) {
-                        this.handleAuthFailure();
+                    if (this.isAuthEndpoint(originalRequest?.url || '')) {
                         return Promise.reject(error);
                     }
 
@@ -85,9 +98,10 @@ export class ApiClient {
     }
 
     handleAuthFailure() {
-        this.logout().finally(() => {
+        Cookies.remove('logged');
+        if (this.shouldRedirectToLogin() && window.location.pathname !== '/login') {
             window.location.href = '/login';
-        });
+        }
     }
 
     isLoggedIn() {
@@ -96,9 +110,11 @@ export class ApiClient {
 
     async logout() {
         try {
-            await this.axiosInstance.get('/api/users/logout');
+            await this.axiosInstance.get('/api/user/logout');
+            Cookies.remove('logged');
         } catch (error) {
             console.error('Logout error:', error);
+            Cookies.remove('logged');
         }
     }
 

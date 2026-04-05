@@ -18,9 +18,6 @@ function LoginUser() {
             await requestLogin(values);
             toast.success('Đăng nhập thành công!');
             setLoading(false);
-            setTimeout(() => {
-                window.location.reload();
-            }, 1000);
             navigate('/');
         } catch (error) {
             toast.error(error.response.data.message);

@@ -14,7 +14,12 @@ const CardIssuanceManagement = () => {
         setLoading(true);
         try {
             const res = await requestGetRequestLoan();
-            setData(res.metadata);
+            const list = Array.isArray(res?.metadata) ? res.metadata : [];
+            const normalized = list.map((item) => ({
+                ...item,
+                id: item?.id || item?.mysqlId || (item?._id ? String(item._id) : undefined),
+            }));
+            setData(normalized);
         } catch (error) {
             message.error('Không thể tải danh sách yêu cầu');
         } finally {
@@ -44,6 +49,10 @@ const CardIssuanceManagement = () => {
     const onIssueFormFinish = async (values) => {
         setLoading(true);
         try {
+            if (!selectedUser?.id) {
+                message.error('Không tìm thấy người dùng hợp lệ');
+                return;
+            }
             const data = {
                 userId: selectedUser.id,
                 idStudent: values.idStudent,
@@ -76,7 +85,12 @@ const CardIssuanceManagement = () => {
     };
 
     const columns = [
-        { title: 'ID', dataIndex: 'id', key: 'id', render: (text) => <span>{text.slice(0, 10)}</span> },
+        {
+            title: 'ID',
+            dataIndex: 'id',
+            key: 'id',
+            render: (text) => <span>{String(text || '').slice(0, 10) || '-'}</span>,
+        },
         {
             title: 'Ảnh đại diện',
             dataIndex: 'avatar',
@@ -84,7 +98,7 @@ const CardIssuanceManagement = () => {
             render: (text) => (
                 <img
                     style={{ width: '70px', height: '70px', borderRadius: '50%', objectFit: 'cover' }}
-                    src={`${import.meta.env.VITE_API_URL_IMAGE}/${text}`}
+                    src={text ? `${import.meta.env.VITE_API_URL_IMAGE}/${text}` : '/placeholder-avatar.png'}
                     alt="avatar"
                 />
             ),
@@ -125,7 +139,7 @@ const CardIssuanceManagement = () => {
     return (
         <div>
             <h2 className="text-2xl mb-4 font-bold">Quản lý cấp thẻ sinh viên</h2>
-            <Table columns={columns} dataSource={data} rowKey="id" loading={loading} />
+            <Table columns={columns} dataSource={data} rowKey={(record) => record.id || record.email} loading={loading} />
 
             <Modal
                 title={`Cấp thẻ cho: ${selectedUser?.fullName}`}

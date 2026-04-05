@@ -7,7 +7,19 @@ const LoanRequestManagement = () => {
     const [data, setData] = useState([]);
     const fetchData = async () => {
         const res = await requestGetAllHistoryBook();
-        setData(res.metadata);
+        const list = Array.isArray(res?.metadata) ? res.metadata : [];
+        const normalized = list.map((item) => ({
+            ...item,
+            id: item?.id || item?.mysqlId || (item?._id ? String(item._id) : undefined),
+            product: {
+                ...(item?.product || {}),
+                id:
+                    item?.product?.id ||
+                    item?.product?.mysqlId ||
+                    (item?.product?._id ? String(item.product._id) : undefined),
+            },
+        }));
+        setData(normalized);
     };
     useEffect(() => {
         fetchData();
@@ -28,7 +40,7 @@ const LoanRequestManagement = () => {
     };
 
     const columns = [
-        { title: 'ID Yêu cầu', dataIndex: 'id', key: 'id', render: (text) => <span>{text.slice(0, 10)}</span> },
+        { title: 'ID Yêu cầu', dataIndex: 'id', key: 'id', render: (text) => <span>{String(text || '').slice(0, 10)}</span> },
         { title: 'Người mượn', dataIndex: 'fullName', key: 'fullName' },
         {
             title: 'Ảnh',
@@ -37,12 +49,12 @@ const LoanRequestManagement = () => {
             render: (record) => (
                 <img
                     style={{ width: '100px', height: '100px', objectFit: 'cover' }}
-                    src={`${import.meta.env.VITE_API_URL_IMAGE}/${record.image}`}
+                    src={record?.image ? `${import.meta.env.VITE_API_URL_IMAGE}/${record.image}` : '/placeholder-avatar.png'}
                     alt=""
                 />
             ),
         },
-        { title: 'Tên sách', dataIndex: 'product', key: 'product', render: (record) => record.nameProduct },
+        { title: 'Tên sách', dataIndex: 'product', key: 'product', render: (record) => record?.nameProduct || '-' },
         { title: 'Số lượng', dataIndex: 'quantity', key: 'quantity' },
         {
             title: 'Ngày mượn',
@@ -76,7 +88,7 @@ const LoanRequestManagement = () => {
                 <span>
                     {record.status === 'pending' && (
                         <Button
-                            onClick={() => handleUpdateStatus(record.id, 'success', record.product.id, record.userId)}
+                            onClick={() => handleUpdateStatus(record.id, 'success', record.product?.id, record.userId)}
                             type="primary"
                         >
                             Duyệt
@@ -84,7 +96,7 @@ const LoanRequestManagement = () => {
                     )}
                     {record.status === 'pending' && (
                         <Button
-                            onClick={() => handleUpdateStatus(record.id, 'cancel', record.product.id, record.userId)}
+                            onClick={() => handleUpdateStatus(record.id, 'cancel', record.product?.id, record.userId)}
                             type="primary"
                             danger
                         >
@@ -100,7 +112,7 @@ const LoanRequestManagement = () => {
     return (
         <div>
             <h2 className="text-2xl mb-4 font-bold">Quản lý yêu cầu mượn sách</h2>
-            <Table columns={columns} dataSource={data} rowKey="id" />
+            <Table columns={columns} dataSource={data} rowKey={(record) => record.id || record.userId} />
         </div>
     );
 };

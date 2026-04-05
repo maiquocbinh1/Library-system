@@ -17,26 +17,48 @@ const sendMailForgotPassword = require('../utils/sendMailForgotPassword');
 
 require('dotenv').config();
 
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const COOKIE_SAME_SITE = IS_PRODUCTION ? 'Strict' : 'Lax';
+
 const TOKEN_COOKIE_OPTIONS = {
     httpOnly: true,
-    secure: true,
-    sameSite: 'Strict',
+    secure: IS_PRODUCTION,
+    sameSite: COOKIE_SAME_SITE,
+    path: '/',
     maxAge: 15 * 60 * 1000,
 };
 
 const REFRESH_COOKIE_OPTIONS = {
     httpOnly: true,
-    secure: true,
-    sameSite: 'Strict',
+    secure: IS_PRODUCTION,
+    sameSite: COOKIE_SAME_SITE,
+    path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
 const LOGGED_COOKIE_OPTIONS = {
     httpOnly: false,
-    secure: true,
-    sameSite: 'Strict',
+    secure: IS_PRODUCTION,
+    sameSite: COOKIE_SAME_SITE,
+    path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
 };
+
+function clearLegacyAuthCookies(res) {
+    const legacyOptions = { path: '/api/user', sameSite: COOKIE_SAME_SITE, secure: IS_PRODUCTION };
+    res.clearCookie('token', legacyOptions);
+    res.clearCookie('refreshToken', legacyOptions);
+    res.clearCookie('logged', legacyOptions);
+}
+
+function setAuthCookies(res, token, refreshToken) {
+    clearLegacyAuthCookies(res);
+    res.cookie('token', token, TOKEN_COOKIE_OPTIONS);
+    res.cookie('logged', 1, LOGGED_COOKIE_OPTIONS);
+    if (refreshToken) {
+        res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
+    }
+}
 
 function random36() {
     return crypto.randomUUID();
@@ -124,9 +146,7 @@ class controllerUser {
         });
         const refreshToken = await signTokenForUser(userId, {}, '7d');
 
-        res.cookie('token', token, TOKEN_COOKIE_OPTIONS);
-        res.cookie('logged', 1, LOGGED_COOKIE_OPTIONS);
-        res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
+        setAuthCookies(res, token, refreshToken);
 
         new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken } }).send(res);
     }
@@ -153,9 +173,7 @@ class controllerUser {
         const token = await signTokenForUser(userId, { role: user.role });
         const refreshToken = await signTokenForUser(userId, {}, '7d');
 
-        res.cookie('token', token, TOKEN_COOKIE_OPTIONS);
-        res.cookie('logged', 1, LOGGED_COOKIE_OPTIONS);
-        res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
+        setAuthCookies(res, token, refreshToken);
 
         new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken } }).send(res);
     }
@@ -180,8 +198,7 @@ class controllerUser {
         }
 
         const token = await signTokenForUser(String(user._id));
-        res.cookie('token', token, TOKEN_COOKIE_OPTIONS);
-        res.cookie('logged', 1, LOGGED_COOKIE_OPTIONS);
+        setAuthCookies(res, token);
 
         new OK({ message: 'Refresh token thành công', metadata: { token } }).send(res);
     }
@@ -189,9 +206,10 @@ class controllerUser {
     async logout(req, res) {
         const { id } = req.user;
         await ApiKeyMongo.deleteMany({ userId: String(id) });
-        res.clearCookie('token');
-        res.clearCookie('refreshToken');
-        res.clearCookie('logged');
+        clearLegacyAuthCookies(res);
+        res.clearCookie('token', { path: '/', sameSite: COOKIE_SAME_SITE, secure: IS_PRODUCTION });
+        res.clearCookie('refreshToken', { path: '/', sameSite: COOKIE_SAME_SITE, secure: IS_PRODUCTION });
+        res.clearCookie('logged', { path: '/', sameSite: COOKIE_SAME_SITE, secure: IS_PRODUCTION });
         new OK({ message: 'Đăng xuất thành công' }).send(res);
     }
 
@@ -237,9 +255,7 @@ class controllerUser {
         const token = await signTokenForUser(userId, { role: user.role });
         const refreshToken = await signTokenForUser(userId, {}, '7d');
 
-        res.cookie('token', token, TOKEN_COOKIE_OPTIONS);
-        res.cookie('logged', 1, LOGGED_COOKIE_OPTIONS);
-        res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
+        setAuthCookies(res, token, refreshToken);
 
         new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken } }).send(res);
     }
