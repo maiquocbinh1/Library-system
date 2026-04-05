@@ -9,6 +9,9 @@ const { OK, Created } = require('../core/success.response');
 const SendMailBookBorrowConfirmation = require('../utils/SendMailSuccess');
 const SendMailBookBorrowFailed = require('../utils/SendMailFail');
 
+const ALLOWED_HISTORY_STATUS = ['pending', 'success', 'cancel'];
+const MAX_BORROW_DAYS = 30;
+
 function random36() {
     return crypto.randomUUID();
 }
@@ -70,28 +73,58 @@ class historyBookController {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
 
-        const product = await findProductByAnyId(bookId);
-        if (!product) {
+        const quantityNumber = Number(quantity);
+        if (!Number.isFinite(quantityNumber) || quantityNumber <= 0) {
+            throw new BadRequestError('Số lượng mượn không hợp lệ');
+        }
+
+        const borrowDateValue = new Date(borrowDate);
+        const returnDateValue = new Date(returnDate);
+        if (Number.isNaN(borrowDateValue.getTime()) || Number.isNaN(returnDateValue.getTime())) {
+            throw new BadRequestError('Ngày mượn hoặc ngày trả không hợp lệ');
+        }
+        if (returnDateValue <= borrowDateValue) {
+            throw new BadRequestError('Ngày trả phải sau ngày mượn');
+        }
+        const borrowDurationDays = Math.ceil((returnDateValue - borrowDateValue) / (1000 * 60 * 60 * 24));
+        if (borrowDurationDays > MAX_BORROW_DAYS) {
+            throw new BadRequestError(`Chỉ được mượn tối đa ${MAX_BORROW_DAYS} ngày`);
+        }
+
+        const existedProduct = await findProductByAnyId(bookId);
+        if (!existedProduct) {
             throw new BadRequestError('Sách không tồn tại');
         }
-        if (Number(product.stock) < Number(quantity)) {
-            throw new BadRequestError('Số lượng sách không đủ');
+
+        let reservedProduct = null;
+        let historyBook = null;
+        try {
+            reservedProduct = await ProductMongo.findOneAndUpdate(
+                { _id: existedProduct._id, stock: { $gte: quantityNumber } },
+                { $inc: { stock: -quantityNumber } },
+                { new: true },
+            );
+            if (!reservedProduct) {
+                throw new BadRequestError('Sách đã hết hoặc không đủ số lượng');
+            }
+
+            historyBook = await HistoryBookMongo.create({
+                mysqlId: random36(),
+                fullName,
+                phone: phoneNumber,
+                address,
+                bookId: String(reservedProduct._id),
+                borrowDate: borrowDateValue,
+                returnDate: returnDateValue,
+                quantity: quantityNumber,
+                userId: String(user._id),
+            });
+        } catch (error) {
+            if (reservedProduct?._id) {
+                await ProductMongo.updateOne({ _id: reservedProduct._id }, { $inc: { stock: quantityNumber } });
+            }
+            throw error;
         }
-
-        const historyBook = await HistoryBookMongo.create({
-            mysqlId: random36(),
-            fullName,
-            phone: phoneNumber,
-            address,
-            bookId: String(product._id),
-            borrowDate,
-            returnDate,
-            quantity: Number(quantity),
-            userId: String(user._id),
-        });
-
-        product.stock = Number(product.stock) - Number(quantity);
-        await product.save();
 
         new Created({
             message: 'Create history book success',
@@ -152,11 +185,14 @@ class historyBookController {
             throw new BadRequestError('Sách không tồn tại');
         }
 
+        if (findHistory.status === 'cancel') {
+            throw new BadRequestError('Phiếu này đã được huỷ rồi');
+        }
+
         findHistory.status = 'cancel';
         await findHistory.save();
 
-        findProduct.stock = Number(findProduct.stock) + Number(findHistory.quantity);
-        await findProduct.save();
+        await ProductMongo.updateOne({ _id: findProduct._id }, { $inc: { stock: Number(findHistory.quantity) } });
 
         new OK({
             message: 'Cancel book success',
@@ -188,6 +224,22 @@ class historyBookController {
         const findUser = await findUserByAnyId(userId || (findHistory && findHistory.userId));
         if (!findHistory) {
             throw new BadRequestError('Lịch sử mượn không tồn tại');
+        }
+        if (!ALLOWED_HISTORY_STATUS.includes(status)) {
+            throw new BadRequestError('Trạng thái cập nhật không hợp lệ');
+        }
+        if (findHistory.status === status) {
+            throw new BadRequestError('Phiếu mượn đã ở trạng thái này');
+        }
+        if (findHistory.status === 'cancel' && status !== 'cancel') {
+            throw new BadRequestError('Phiếu đã huỷ không thể cập nhật lại');
+        }
+
+        if (status === 'cancel') {
+            if (!findProduct) {
+                throw new BadRequestError('Sách không tồn tại');
+            }
+            await ProductMongo.updateOne({ _id: findProduct._id }, { $inc: { stock: Number(findHistory.quantity) } });
         }
 
         findHistory.status = status;

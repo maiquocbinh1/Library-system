@@ -1,13 +1,52 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBookOpen, faUser, faCalendar, faLanguage, faBoxes, faBuilding } from '@fortawesome/free-solid-svg-icons';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { HeartFilled, HeartOutlined, BookFilled, BookOutlined } from '@ant-design/icons';
+import { Tooltip, message } from 'antd';
 
 import ModalBuyBook from '../components/ModalBuyBook';
 import { useState } from 'react';
+import { requestToggleFavorite, requestToggleReadLater } from '../config/request';
+import { useStore } from '../hooks/useStore';
 
 function CardBody({ data }) {
+    const navigate = useNavigate();
+    const { dataUser } = useStore();
     const [visible, setVisible] = useState(false);
     const [bookData, setBookData] = useState({});
+    const [isFavorite, setIsFavorite] = useState(false);
+    const [isReadLater, setIsReadLater] = useState(false);
+
+    const ensureLoggedIn = () => {
+        if (dataUser?.id) return true;
+        message.warning('Vui lòng đăng nhập để sử dụng tủ sách');
+        navigate('/login');
+        return false;
+    };
+
+    const handleToggleFavorite = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!ensureLoggedIn()) return;
+        try {
+            const res = await requestToggleFavorite(data.id);
+            setIsFavorite(Boolean(res?.metadata?.isFavorite));
+        } catch (error) {
+            message.error(error?.response?.data?.message || 'Không thể cập nhật yêu thích');
+        }
+    };
+
+    const handleToggleReadLater = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!ensureLoggedIn()) return;
+        try {
+            const res = await requestToggleReadLater(data.id);
+            setIsReadLater(Boolean(res?.metadata?.isReadLater));
+        } catch (error) {
+            message.error(error?.response?.data?.message || 'Không thể cập nhật đọc sau');
+        }
+    };
 
     const showModal = async (data) => {
         setBookData(data);
@@ -18,15 +57,22 @@ function CardBody({ data }) {
         setVisible(false);
     };
 
+    const imageSrc = data?.image?.startsWith('http')
+        ? data.image
+        : `${import.meta.env.VITE_API_URL_IMAGE}/${data?.image || ''}`;
+
     return (
         <div className="h-full bg-gradient-to-br from-white to-blue-50/30 rounded-xl shadow-sm border border-gray-100 hover:shadow-xl hover:border-blue-300 hover:from-blue-50/50 hover:to-purple-50/30 transition-all duration-300 overflow-hidden group relative">
             <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
             <Link to={`/product/${data.id}`}>
                 <div className="relative overflow-hidden">
                     <img
-                        src={`${import.meta.env.VITE_API_URL_IMAGE}/${data.image}`}
+                        src={imageSrc}
                         className="w-full h-56 object-cover group-hover:scale-105 transition-transform duration-300"
                         alt={data.nameProduct}
+                        onError={(e) => {
+                            e.currentTarget.src = '/placeholder-avatar.png';
+                        }}
                     />
                     <div className="absolute top-3 right-3">
                         <span
@@ -104,6 +150,24 @@ function CardBody({ data }) {
                     >
                         {data.stock > 0 ? '📚 Mượn ngay' : '❌ Hết hàng'}
                     </button>
+                    <div className="mt-2 flex items-center justify-center gap-3">
+                        <Tooltip title="Yêu thích">
+                            <button
+                                onClick={handleToggleFavorite}
+                                className="p-2 rounded-full border border-gray-200 hover:border-red-400 hover:bg-red-50 transition-colors"
+                            >
+                                {isFavorite ? <HeartFilled className="text-red-500" /> : <HeartOutlined className="text-gray-500" />}
+                            </button>
+                        </Tooltip>
+                        <Tooltip title="Đọc sau">
+                            <button
+                                onClick={handleToggleReadLater}
+                                className="p-2 rounded-full border border-gray-200 hover:border-yellow-400 hover:bg-yellow-50 transition-colors"
+                            >
+                                {isReadLater ? <BookFilled className="text-yellow-500" /> : <BookOutlined className="text-gray-500" />}
+                            </button>
+                        </Tooltip>
+                    </div>
                 </div>
             </div>
             <ModalBuyBook visible={visible} onCancel={onCancel} bookData={bookData} />

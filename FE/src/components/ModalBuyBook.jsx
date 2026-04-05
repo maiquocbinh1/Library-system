@@ -32,6 +32,9 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
     const today = dayjs();
     const minReturnDate = today.add(1, 'day');
     const maxReturnDate = today.add(BORROW_DURATION_MAX_DAYS, 'day');
+    const bookImageSrc = bookData?.image?.startsWith('http')
+        ? bookData.image
+        : `${import.meta.env.VITE_API_URL_IMAGE}/${bookData?.image || ''}`;
 
     useEffect(() => {
         if (visible && dataUser) {
@@ -120,12 +123,13 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
                         <Row gutter={16} align="middle">
                             <Col xs={24} sm={8} className="flex justify-center">
                                 <Image
-                                    src={`${import.meta.env.VITE_API_URL}/${bookData.image}`}
+                                    src={bookImageSrc}
                                     alt={bookData.nameProduct}
                                     width={120}
                                     height={160}
                                     className="rounded-lg shadow-md object-cover"
                                     preview={false}
+                                    fallback="/placeholder-avatar.png"
                                 />
                             </Col>
                             <Col xs={24} sm={16}>

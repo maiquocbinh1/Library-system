@@ -119,19 +119,19 @@ function Header() {
                                             key: 'profile',
                                             icon: <UserOutlined />,
                                             label: 'Thông tin cá nhân',
-                                            onClick: () => navigate('/infoUser'),
+                                            onClick: () => navigate('/infoUser?tab=info'),
                                         },
                                         {
                                             key: 'settings',
                                             icon: <HistoryOutlined />,
                                             label: 'Lịch sử mượn sách',
-                                            onClick: () => navigate('/infoUser'),
+                                            onClick: () => navigate('/infoUser?tab=history'),
                                         },
                                         {
                                             key: 'settings2',
                                             icon: <SendOutlined />,
-                                            label: 'Gửi yêu cầu cấp mã độc giả',
-                                            onClick: () => navigate('/infoUser'),
+                                            label: 'Tủ sách của tôi',
+                                            onClick: () => navigate('/infoUser?tab=bookshelf'),
                                         },
                                         {
                                             type: 'divider',

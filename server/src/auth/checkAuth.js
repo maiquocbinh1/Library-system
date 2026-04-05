@@ -1,6 +1,7 @@
 const { AuthFailureError } = require('../core/error.response');
 const { verifyToken, createToken } = require('../services/tokenServices');
 const UserMongo = require('../models/user.mongo.model');
+const mongoose = require('mongoose');
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const COOKIE_SAME_SITE = IS_PRODUCTION ? 'Strict' : 'Lax';
@@ -39,6 +40,15 @@ const decodeUserFromCookies = async (req, res) => {
     return decodedRefresh;
 };
 
+const findUserByAnyId = async (id) => {
+    if (!id) return null;
+    if (mongoose.isValidObjectId(id)) {
+        const byMongoId = await UserMongo.findById(id);
+        if (byMongoId) return byMongoId;
+    }
+    return UserMongo.findOne({ mysqlId: String(id) });
+};
+
 const authUser = async (req, res, next) => {
     try {
         const decoded = await decodeUserFromCookies(req, res);
@@ -53,7 +63,7 @@ const authAdmin = async (req, res, next) => {
     try {
         const decoded = await decodeUserFromCookies(req, res);
         const { id } = decoded;
-        const findUser = await UserMongo.findById(id);
+        const findUser = await findUserByAnyId(id);
         if (!findUser || findUser.role !== 'admin') {
             throw new AuthFailureError('Bạn không có quyền truy cập');
         }
