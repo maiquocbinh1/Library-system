@@ -7,7 +7,7 @@ import useDebounce from '../hooks/useDebounce';
 import { requestLogout, requestSearchProduct } from '../config/request';
 
 function Header() {
-    const { dataUser } = useStore();
+    const { dataUser, refreshAuth } = useStore();
     const navigate = useNavigate();
 
     const [valueSearch, setValueSearch] = useState('');
@@ -19,6 +19,7 @@ function Header() {
     const handleLogout = async () => {
         try {
             await requestLogout();
+            await refreshAuth();
             navigate('/');
         } catch (error) {
             console.error('Failed to logout:', error);
@@ -129,7 +130,7 @@ function Header() {
                                         {
                                             key: 'settings2',
                                             icon: <SendOutlined />,
-                                            label: 'Gửi yêu cầu cấp mã sinh viên',
+                                            label: 'Gửi yêu cầu cấp mã độc giả',
                                             onClick: () => navigate('/infoUser'),
                                         },
                                         {

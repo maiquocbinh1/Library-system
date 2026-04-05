@@ -69,6 +69,10 @@ export const requestIdStudent = async () => {
     return res.data;
 };
 
+export const requestReaderCode = async () => {
+    return requestIdStudent();
+};
+
 export const requestUploadImage = async (data) => {
     const res = await apiClient.post(`${apiUser}/upload-image`, data);
     return res.data;
@@ -92,6 +96,10 @@ export const requestGetRequestLoan = async () => {
 export const requestConfirmIdStudent = async (data) => {
     const res = await apiClient.post(`${apiUser}/confirm-id-student`, data);
     return res.data;
+};
+
+export const requestConfirmReaderCode = async (data) => {
+    return requestConfirmIdStudent(data);
 };
 
 export const requestStatistics = async () => {

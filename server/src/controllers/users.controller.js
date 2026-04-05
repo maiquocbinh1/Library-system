@@ -11,6 +11,7 @@ const { OK } = require('../core/success.response');
 const UserMongo = require('../models/user.mongo.model');
 const ApiKeyMongo = require('../models/apiKey.mongo.model');
 const OtpMongo = require('../models/otp.mongo.model');
+const ReaderCodeMongo = require('../models/readerCode.mongo.model');
 const ProductMongo = require('../models/product.mongo.model');
 const HistoryBookMongo = require('../models/historyBook.mongo.model');
 const sendMailForgotPassword = require('../utils/sendMailForgotPassword');
@@ -391,6 +392,7 @@ class controllerUser {
         const userObjectId = String(user._id);
         await UserMongo.deleteOne({ _id: user._id });
         await ApiKeyMongo.deleteMany({ userId: userObjectId });
+        await ReaderCodeMongo.deleteMany({ userId: userObjectId });
 
         new OK({ message: 'Xóa người dùng thành công' }).send(res);
     }
@@ -414,8 +416,29 @@ class controllerUser {
             throw new BadRequestError('Người dùng không tồn tại');
         }
 
-        if (user.idStudent !== null && user.idStudent !== undefined) {
-            throw new BadRequestError('Vui lòng chờ xác nhận ID sinh viên');
+        const userObjectId = String(user._id);
+        const currentReaderCode = await ReaderCodeMongo.findOne({ userId: userObjectId });
+        if (currentReaderCode?.status === 'approved' && currentReaderCode.readerCode) {
+            throw new BadRequestError('Bạn đã có mã độc giả');
+        }
+        if (currentReaderCode?.status === 'pending' || user.idStudent === '0') {
+            throw new BadRequestError('Vui lòng chờ xác nhận mã độc giả');
+        }
+
+        if (currentReaderCode) {
+            currentReaderCode.status = 'pending';
+            currentReaderCode.readerCode = null;
+            currentReaderCode.requestedAt = new Date();
+            currentReaderCode.approvedAt = null;
+            await currentReaderCode.save();
+        } else {
+            await ReaderCodeMongo.create({
+                mysqlId: random36(),
+                userId: userObjectId,
+                status: 'pending',
+                readerCode: null,
+                requestedAt: new Date(),
+            });
         }
 
         user.idStudent = '0';
@@ -426,13 +449,38 @@ class controllerUser {
     async confirmIdStudent(req, res) {
         const { idStudent, userId } = req.body;
         if (!idStudent || !userId) {
-            throw new BadRequestError('Vui lòng nhập ID sinh viên');
+            throw new BadRequestError('Vui lòng nhập mã độc giả');
         }
 
         const user = await findUserByAnyId(userId);
         if (!user) {
             throw new BadRequestError('Người dùng không tồn tại');
         }
+
+        const userObjectId = String(user._id);
+        const duplicatedReaderCode = await ReaderCodeMongo.findOne({
+            readerCode: String(idStudent),
+            userId: { $ne: userObjectId },
+        });
+        if (duplicatedReaderCode) {
+            throw new BadRequestError('Mã độc giả đã tồn tại');
+        }
+
+        await ReaderCodeMongo.findOneAndUpdate(
+            { userId: userObjectId },
+            {
+                $set: {
+                    status: 'approved',
+                    readerCode: String(idStudent),
+                    approvedAt: new Date(),
+                },
+                $setOnInsert: {
+                    mysqlId: random36(),
+                    requestedAt: new Date(),
+                },
+            },
+            { upsert: true, new: true },
+        );
 
         user.idStudent = idStudent;
         await user.save();

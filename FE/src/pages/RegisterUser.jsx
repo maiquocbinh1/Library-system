@@ -183,7 +183,7 @@ function RegisterUser() {
                 <Footer />
             </footer>
 
-            <style jsx>{`
+            <style>{`
                 .shadow-text {
                     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
                 }

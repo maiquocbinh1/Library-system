@@ -7,15 +7,18 @@ import { Link, useNavigate } from 'react-router-dom';
 import { requestLogin } from '../config/request';
 import { toast } from 'react-toastify';
 import imagesLogin from '../assets/images/login.jpg';
+import { useStore } from '../hooks/useStore';
 
 function LoginUser() {
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
+    const { refreshAuth } = useStore();
     const onFinish = async (values) => {
         setLoading(true);
 
         try {
             await requestLogin(values);
+            await refreshAuth();
             toast.success('Đăng nhập thành công!');
             setLoading(false);
             navigate('/');
@@ -120,7 +123,7 @@ function LoginUser() {
                 <Footer />
             </footer>
 
-            <style jsx>{`
+            <style>{`
                 .shadow-text {
                     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
                 }

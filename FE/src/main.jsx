@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import '@ant-design/v5-patch-for-react-19';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { routes } from './routes/index.jsx';
 import { Provider } from './store/Provider.jsx';
