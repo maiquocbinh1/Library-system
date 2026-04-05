@@ -1,10 +1,8 @@
 const express = require('express');
 const app = express();
-const port = 3000;
+const port = Number(process.env.PORT || 3000);
 
-const { connectDB } = require('./config/connectDB');
 const { connectMongo } = require('./config/connectMongo');
-const sync = require('./models/sync');
 
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -25,17 +23,10 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '../src')));
 
 async function bootstrap() {
-    const mysqlOk = await connectDB();
-
-    if (mysqlOk) {
-        try {
-            await sync();
-        } catch (err) {
-            console.warn('[MySQL] sync:', err.message);
-        }
+    const mongoOk = await connectMongo();
+    if (!mongoOk) {
+        console.warn('[MongoDB] Khong ket noi duoc, server van khoi dong');
     }
-
-    await connectMongo();
 
     route(app);
 

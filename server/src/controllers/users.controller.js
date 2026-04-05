@@ -1,31 +1,94 @@
-const modelUser = require('../models/users.model');
-const modelApiKey = require('../models/apiKey.model');
-const modelOtp = require('../models/otp.model');
-
-const { AuthFailureError, BadRequestError } = require('../core/error.response');
-const { OK } = require('../core/success.response');
-const User = require('../models/users.model');
-const Product = require('../models/product.model');
-const HistoryBook = require('../models/historyBook.model');
-const { Op } = require('sequelize');
-const { createApiKey, createRefreshToken, createToken, verifyToken } = require('../services/tokenServices');
-
-const sendMailForgotPassword = require('../utils/sendMailForgotPassword');
-
+const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const CryptoJS = require('crypto-js');
 const { jwtDecode } = require('jwt-decode');
 const jwt = require('jsonwebtoken');
 const otpGenerator = require('otp-generator');
-const {
-    syncUserFromPlain,
-    deleteUserMongo,
-    deleteApiKeysByUserIdMongo,
-    syncOtpFromPlain,
-    deleteOtpsByEmailMongo,
-} = require('../services/mongoDualWrite');
+const mongoose = require('mongoose');
+
+const { AuthFailureError, BadRequestError } = require('../core/error.response');
+const { OK } = require('../core/success.response');
+const UserMongo = require('../models/user.mongo.model');
+const ApiKeyMongo = require('../models/apiKey.mongo.model');
+const OtpMongo = require('../models/otp.mongo.model');
+const ProductMongo = require('../models/product.mongo.model');
+const HistoryBookMongo = require('../models/historyBook.mongo.model');
+const sendMailForgotPassword = require('../utils/sendMailForgotPassword');
 
 require('dotenv').config();
+
+const TOKEN_COOKIE_OPTIONS = {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Strict',
+    maxAge: 15 * 60 * 1000,
+};
+
+const REFRESH_COOKIE_OPTIONS = {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+};
+
+const LOGGED_COOKIE_OPTIONS = {
+    httpOnly: false,
+    secure: true,
+    sameSite: 'Strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+};
+
+function random36() {
+    return crypto.randomUUID();
+}
+
+async function findUserByAnyId(id) {
+    if (!id) return null;
+
+    if (mongoose.isValidObjectId(id)) {
+        const byMongoId = await UserMongo.findById(id);
+        if (byMongoId) return byMongoId;
+    }
+
+    return UserMongo.findOne({ mysqlId: String(id) });
+}
+
+async function createApiKey(userId) {
+    const userIdStr = String(userId);
+    await ApiKeyMongo.deleteMany({ userId: userIdStr });
+
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const privateKeyString = privateKey.export({ type: 'pkcs8', format: 'pem' });
+    const publicKeyString = publicKey.export({ type: 'spki', format: 'pem' });
+
+    return ApiKeyMongo.create({
+        mysqlId: random36(),
+        userId: userIdStr,
+        publicKey: publicKeyString,
+        privateKey: privateKeyString,
+    });
+}
+
+async function signTokenForUser(userId, payload = {}, expiresIn = '15m') {
+    const userIdStr = String(userId);
+    const apiKey = await ApiKeyMongo.findOne({ userId: userIdStr });
+    if (!apiKey?.privateKey) {
+        throw new Error('Private key not found for user');
+    }
+    return jwt.sign({ id: userIdStr, ...payload }, apiKey.privateKey, {
+        algorithm: 'RS256',
+        expiresIn,
+    });
+}
+
+async function verifyUserToken(token) {
+    const { id } = jwtDecode(token);
+    const apiKey = await ApiKeyMongo.findOne({ userId: String(id) });
+    if (!apiKey?.publicKey) {
+        throw new AuthFailureError('Vui lòng đăng nhập lại');
+    }
+    return jwt.verify(token, apiKey.publicKey, { algorithms: ['RS256'] });
+}
 
 class controllerUser {
     async registerUser(req, res) {
@@ -33,54 +96,37 @@ class controllerUser {
         if (!fullName || !phone || !email || !password) {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
-        const findUser = await modelUser.findOne({ where: { email } });
 
-        if (findUser) {
+        const existed = await UserMongo.findOne({ email });
+        if (existed) {
             throw new BadRequestError('Email đã tồn tại');
         }
 
-        const saltRounds = 10;
-        const salt = bcrypt.genSaltSync(saltRounds);
-        const passwordHash = bcrypt.hashSync(password, salt);
-        const dataUser = await modelUser.create({
+        const passwordHash = bcrypt.hashSync(password, bcrypt.genSaltSync(10));
+        const dataUser = await UserMongo.create({
+            mysqlId: random36(),
             fullName,
             phone,
             address,
             email,
             password: passwordHash,
             typeLogin: 'email',
+            role: 'user',
         });
 
-        await dataUser.save();
-        await syncUserFromPlain(dataUser.get({ plain: true }));
-        await createApiKey(dataUser.id);
-        const token = await createToken({
-            id: dataUser.id,
-            isAdmin: dataUser.isAdmin,
+        const userId = String(dataUser._id);
+        await createApiKey(userId);
+
+        const token = await signTokenForUser(userId, {
+            role: dataUser.role,
             address: dataUser.address,
             phone: dataUser.phone,
         });
-        const refreshToken = await createRefreshToken({ id: dataUser.id });
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'Strict',
-            maxAge: 15 * 60 * 1000,
-        });
+        const refreshToken = await signTokenForUser(userId, {}, '7d');
 
-        res.cookie('logged', 1, {
-            httpOnly: false,
-            secure: true,
-            sameSite: 'Strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
-
-        res.cookie('refreshToken', refreshToken, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'Strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
+        res.cookie('token', token, TOKEN_COOKIE_OPTIONS);
+        res.cookie('logged', 1, LOGGED_COOKIE_OPTIONS);
+        res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
 
         new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken } }).send(res);
     }
@@ -90,93 +136,69 @@ class controllerUser {
         if (!email || !password) {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
-        const findUser = await modelUser.findOne({ where: { email } });
-        if (!findUser) {
+
+        const user = await UserMongo.findOne({ email });
+        if (!user) {
             throw new AuthFailureError('Tài khoản hoặc mật khẩu không chính xác');
         }
-        const isPasswordValid = bcrypt.compareSync(password, findUser.password);
+
+        const isPasswordValid = bcrypt.compareSync(password, user.password || '');
         if (!isPasswordValid) {
             throw new AuthFailureError('Tài khoản hoặc mật khẩu không chính xác');
         }
-        await syncUserFromPlain(findUser.get({ plain: true }));
-        await createApiKey(findUser.id);
-        const token = await createToken({ id: findUser.id, isAdmin: findUser.isAdmin });
-        const refreshToken = await createRefreshToken({ id: findUser.id });
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'Strict',
-            maxAge: 15 * 60 * 1000,
-        });
-        res.cookie('logged', 1, {
-            httpOnly: false,
-            secure: true,
-            sameSite: 'Strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
-        res.cookie('refreshToken', refreshToken, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'Strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
+
+        const userId = String(user._id);
+        await createApiKey(userId);
+
+        const token = await signTokenForUser(userId, { role: user.role });
+        const refreshToken = await signTokenForUser(userId, {}, '7d');
+
+        res.cookie('token', token, TOKEN_COOKIE_OPTIONS);
+        res.cookie('logged', 1, LOGGED_COOKIE_OPTIONS);
+        res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
+
         new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken } }).send(res);
     }
 
     async authUser(req, res) {
         const { id } = req.user;
-
-        const findUser = await modelUser.findOne({ where: { id } });
-
-        if (!findUser) {
+        const user = await findUserByAnyId(id);
+        if (!user) {
             throw new AuthFailureError('Tài khoản không tồn tại');
         }
 
-        const auth = CryptoJS.AES.encrypt(JSON.stringify(findUser), process.env.SECRET_CRYPTO).toString();
-
+        const auth = CryptoJS.AES.encrypt(JSON.stringify(user.toObject()), process.env.SECRET_CRYPTO).toString();
         new OK({ message: 'success', metadata: auth }).send(res);
     }
 
     async refreshToken(req, res) {
         const refreshToken = req.cookies.refreshToken;
+        const decoded = await verifyUserToken(refreshToken);
+        const user = await findUserByAnyId(decoded.id);
+        if (!user) {
+            throw new AuthFailureError('Vui lòng đăng nhập lại');
+        }
 
-        const decoded = await verifyToken(refreshToken);
-
-        const user = await modelUser.findOne({ where: { id: decoded.id } });
-        const token = await createToken({ id: user.id });
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'Strict',
-            maxAge: 15 * 60 * 1000,
-        });
-
-        res.cookie('logged', 1, {
-            httpOnly: false,
-            secure: true,
-            sameSite: 'Strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
+        const token = await signTokenForUser(String(user._id));
+        res.cookie('token', token, TOKEN_COOKIE_OPTIONS);
+        res.cookie('logged', 1, LOGGED_COOKIE_OPTIONS);
 
         new OK({ message: 'Refresh token thành công', metadata: { token } }).send(res);
     }
 
     async logout(req, res) {
         const { id } = req.user;
-        await modelApiKey.destroy({ where: { userId: id } });
-        await deleteApiKeysByUserIdMongo(id);
+        await ApiKeyMongo.deleteMany({ userId: String(id) });
         res.clearCookie('token');
         res.clearCookie('refreshToken');
         res.clearCookie('logged');
-
         new OK({ message: 'Đăng xuất thành công' }).send(res);
     }
 
-    async updateInfoUser(req, res, next) {
+    async updateInfoUser(req, res) {
         const { id } = req.user;
-        const { fullName, address, phone, sex } = req.body;
-
-        const user = await modelUser.findOne({ where: { id } });
+        const { fullName, address, phone } = req.body;
+        const user = await findUserByAnyId(id);
         if (!user) {
             throw new BadRequestError('Không tìm thấy tài khoản');
         }
@@ -185,11 +207,12 @@ class controllerUser {
         if (req.file) {
             image = `uploads/avatars/${req.file.filename}`;
         }
-        await user.update({ fullName, address, phone, sex, avatar: image });
-        const userFresh = await modelUser.findOne({ where: { id } });
-        if (userFresh) {
-            await syncUserFromPlain(userFresh.get({ plain: true }));
-        }
+
+        user.fullName = fullName ?? user.fullName;
+        user.address = address ?? user.address;
+        user.phone = phone ?? user.phone;
+        user.avatar = image;
+        await user.save();
 
         new OK({ message: 'Cập nhật thông tin tài khoản thành cong' }).send(res);
     }
@@ -197,62 +220,28 @@ class controllerUser {
     async loginGoogle(req, res) {
         const { credential } = req.body;
         const dataToken = jwtDecode(credential);
-        const user = await modelUser.findOne({ where: { email: dataToken.email } });
-        if (user) {
-            await syncUserFromPlain(user.get({ plain: true }));
-            await createApiKey(user.id);
-            const token = await createToken({ id: user.id });
-            const refreshToken = await createRefreshToken({ id: user.id });
-            res.cookie('token', token, {
-                httpOnly: true,
-                secure: true,
-                sameSite: 'Strict',
-                maxAge: 15 * 60 * 1000,
-            });
-            res.cookie('logged', 1, {
-                httpOnly: false,
-                secure: true,
-                sameSite: 'Strict',
-                maxAge: 7 * 24 * 60 * 60 * 1000,
-            });
-            res.cookie('refreshToken', refreshToken, {
-                httpOnly: true,
-                secure: true,
-                sameSite: 'Strict',
-                maxAge: 7 * 24 * 60 * 60 * 1000,
-            });
-            new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken } }).send(res);
-        } else {
-            const newUser = await modelUser.create({
+
+        let user = await UserMongo.findOne({ email: dataToken.email });
+        if (!user) {
+            user = await UserMongo.create({
+                mysqlId: random36(),
                 fullName: dataToken.name,
                 email: dataToken.email,
                 typeLogin: 'google',
+                role: 'user',
             });
-            await newUser.save();
-            await syncUserFromPlain(newUser.get({ plain: true }));
-            await createApiKey(newUser.id);
-            const token = await createToken({ id: newUser.id });
-            const refreshToken = await createRefreshToken({ id: newUser.id });
-            res.cookie('token', token, {
-                httpOnly: true,
-                secure: true,
-                sameSite: 'Strict',
-                maxAge: 15 * 60 * 1000,
-            });
-            res.cookie('logged', 1, {
-                httpOnly: false,
-                secure: true,
-                sameSite: 'Strict',
-                maxAge: 7 * 24 * 60 * 60 * 1000,
-            });
-            res.cookie('refreshToken', refreshToken, {
-                httpOnly: true,
-                secure: true,
-                sameSite: 'Strict',
-                maxAge: 7 * 24 * 60 * 60 * 1000,
-            });
-            new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken } }).send(res);
         }
+
+        const userId = String(user._id);
+        await createApiKey(userId);
+        const token = await signTokenForUser(userId, { role: user.role });
+        const refreshToken = await signTokenForUser(userId, {}, '7d');
+
+        res.cookie('token', token, TOKEN_COOKIE_OPTIONS);
+        res.cookie('logged', 1, LOGGED_COOKIE_OPTIONS);
+        res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTIONS);
+
+        new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken } }).send(res);
     }
 
     async forgotPassword(req, res) {
@@ -262,40 +251,35 @@ class controllerUser {
                 throw new BadRequestError('Vui lòng nhập email');
             }
 
-            const user = await modelUser.findOne({ where: { email } });
+            const user = await UserMongo.findOne({ email });
             if (!user) {
                 throw new AuthFailureError('Email không tồn tại');
             }
 
-            const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '15m' });
-            const otp = await otpGenerator.generate(6, {
+            const token = jwt.sign({ id: String(user._id), email: user.email }, process.env.JWT_SECRET, {
+                expiresIn: '15m',
+            });
+
+            const otp = otpGenerator.generate(6, {
                 digits: true,
                 lowerCaseAlphabets: false,
                 upperCaseAlphabets: false,
                 specialChars: false,
             });
 
-            const saltRounds = 10;
-
-            bcrypt.hash(otp, saltRounds, async function (err, hash) {
-                if (err) {
-                    console.error('Error hashing OTP:', err);
-                } else {
-                    const otpRow = await modelOtp.create({
-                        email: user.email,
-                        otp: hash,
-                    });
-                    await syncOtpFromPlain(otpRow.get({ plain: true }));
-                    await sendMailForgotPassword(email, otp);
-
-                    return res
-                        .setHeader('Set-Cookie', [
-                            `tokenResetPassword=${token};  Secure; Max-Age=300; Path=/; SameSite=Strict`,
-                        ])
-                        .status(200)
-                        .json({ message: 'Gửi thành công !!!' });
-                }
+            const hash = await bcrypt.hash(otp, 10);
+            await OtpMongo.create({
+                mysqlId: random36(),
+                email: user.email,
+                otp: hash,
             });
+
+            await sendMailForgotPassword(email, otp);
+
+            return res
+                .setHeader('Set-Cookie', [`tokenResetPassword=${token};  Secure; Max-Age=300; Path=/; SameSite=Strict`])
+                .status(200)
+                .json({ message: 'Gửi thành công !!!' });
         } catch (error) {
             console.error('Error forgot password:', error);
             return res.status(500).json({ message: 'Có lỗi xảy ra' });
@@ -306,43 +290,30 @@ class controllerUser {
         try {
             const token = req.cookies.tokenResetPassword;
             const { otp, newPassword } = req.body;
-
             if (!token) {
                 throw new BadRequestError('Vui lòng gửi yêu cầu quên mật khẩu');
             }
 
             const decode = jwt.verify(token, process.env.JWT_SECRET);
-            if (!decode) {
+            const latestOtp = await OtpMongo.findOne({ email: decode.email }).sort({ createdAt: -1 });
+            if (!latestOtp) {
                 throw new AuthFailureError('Sai mã OTP hoặc đã hết hạn, vui lòng lấy OTP mới');
             }
 
-            const findOTP = await modelOtp.findOne({
-                where: { email: decode.email },
-                order: [['createdAt', 'DESC']],
-            });
-            if (!findOTP) {
-                throw new AuthFailureError('Sai mã OTP hoặc đã hết hạn, vui lòng lấy OTP mới');
-            }
-
-            const isMatch = await bcrypt.compare(otp, findOTP.otp);
+            const isMatch = await bcrypt.compare(otp, latestOtp.otp);
             if (!isMatch) {
                 throw new AuthFailureError('Sai mã OTP hoặc đã hết hạn, vui lòng lấy OTP mới');
             }
 
-            const saltRounds = 10;
-            const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
-
-            const findUser = await modelUser.findOne({ where: { email: decode.email } });
-            if (!findUser) {
+            const user = await UserMongo.findOne({ email: decode.email });
+            if (!user) {
                 throw new AuthFailureError('Người dùng không tồn tại');
             }
 
-            findUser.password = hashedPassword;
-            await findUser.save();
-            await syncUserFromPlain(findUser.get({ plain: true }));
+            user.password = await bcrypt.hash(newPassword, 10);
+            await user.save();
 
-            await modelOtp.destroy({ where: { email: decode.email } });
-            await deleteOtpsByEmailMongo(decode.email);
+            await OtpMongo.deleteMany({ email: decode.email });
             res.clearCookie('tokenResetPassword');
             return res.status(200).json({ message: 'Đặt lại mật khẩu thành công' });
         } catch (error) {
@@ -352,24 +323,24 @@ class controllerUser {
     }
 
     async getUsers(req, res) {
-        const users = await modelUser.findAll();
+        const users = await UserMongo.find().sort({ createdAt: -1 });
         new OK({ message: 'Lấy danh sách người dùng thành công', metadata: users }).send(res);
     }
 
     async updateUser(req, res) {
         const { userId, fullName, phone, email, role, address } = req.body;
-
-        const user = await modelUser.findOne({ where: { id: userId } });
+        const user = await findUserByAnyId(userId);
         if (!user) {
             throw new BadRequestError('Người dùng không tồn tại');
         }
-        user.fullName = fullName;
-        user.phone = phone;
-        user.email = email;
-        user.role = role;
-        user.address = address;
+
+        user.fullName = fullName ?? user.fullName;
+        user.phone = phone ?? user.phone;
+        user.email = email ?? user.email;
+        user.role = role ?? user.role;
+        user.address = address ?? user.address;
         await user.save();
-        await syncUserFromPlain(user.get({ plain: true }));
+
         new OK({ message: 'Cập nhật người dùng thành công' }).send(res);
     }
 
@@ -379,13 +350,15 @@ class controllerUser {
         if (!file) {
             throw new BadRequestError('Vui lòng chọn file');
         }
-        const user = await modelUser.findOne({ where: { id } });
+
+        const user = await findUserByAnyId(id);
         if (!user) {
             throw new BadRequestError('Người dùng không tồn tại');
         }
+
         user.avatar = `uploads/avatars/${file.filename}`;
         await user.save();
-        await syncUserFromPlain(user.get({ plain: true }));
+
         new OK({
             message: 'Upload thành công',
             metadata: `uploads/avatars/${file.filename}`,
@@ -394,46 +367,44 @@ class controllerUser {
 
     async deleteUser(req, res) {
         const { userId } = req.body;
-        const user = await modelUser.findOne({ where: { id: userId } });
+        const user = await findUserByAnyId(userId);
         if (!user) {
             throw new BadRequestError('Người dùng không tồn tại');
         }
-        await user.destroy();
-        await deleteApiKeysByUserIdMongo(userId);
-        await deleteUserMongo(userId);
+
+        const userObjectId = String(user._id);
+        await UserMongo.deleteOne({ _id: user._id });
+        await ApiKeyMongo.deleteMany({ userId: userObjectId });
+
         new OK({ message: 'Xóa người dùng thành công' }).send(res);
     }
 
     async updatePassword(req, res) {
         const { userId, password } = req.body;
-        const user = await modelUser.findOne({ where: { id: userId } });
+        const user = await findUserByAnyId(userId);
         if (!user) {
             throw new BadRequestError('Người dùng không tồn tại');
         }
-        const saltRounds = 10;
-        const salt = bcrypt.genSaltSync(saltRounds);
-        const passwordHash = bcrypt.hashSync(password, salt);
-        user.password = passwordHash;
+
+        user.password = bcrypt.hashSync(password, bcrypt.genSaltSync(10));
         await user.save();
-        await syncUserFromPlain(user.get({ plain: true }));
         new OK({ message: 'Cập nhật mật khẩu thành công' }).send(res);
     }
 
     async requestIdStudent(req, res) {
         const { id } = req.user;
-        const user = await modelUser.findOne({ where: { id } });
+        const user = await findUserByAnyId(id);
         if (!user) {
             throw new BadRequestError('Người dùng không tồn tại');
         }
 
-        if (user.dataValues.idStudent !== null || user.dataValues.idStudent === '0') {
+        if (user.idStudent !== null && user.idStudent !== undefined) {
             throw new BadRequestError('Vui lòng chờ xác nhận ID sinh viên');
-        } else {
-            user.idStudent = '0';
-            await user.save();
-            await syncUserFromPlain(user.get({ plain: true }));
-            new OK({ message: 'Yêu cầu thành công' }).send(res);
         }
+
+        user.idStudent = '0';
+        await user.save();
+        new OK({ message: 'Yêu cầu thành công' }).send(res);
     }
 
     async confirmIdStudent(req, res) {
@@ -442,18 +413,18 @@ class controllerUser {
             throw new BadRequestError('Vui lòng nhập ID sinh viên');
         }
 
-        const user = await modelUser.findOne({ where: { id: userId } });
+        const user = await findUserByAnyId(userId);
         if (!user) {
             throw new BadRequestError('Người dùng không tồn tại');
         }
+
         user.idStudent = idStudent;
         await user.save();
-        await syncUserFromPlain(user.get({ plain: true }));
         new OK({ message: 'Xác nhận thành công' }).send(res);
     }
 
     async getRequestLoan(req, res) {
-        const findRequestLoan = await modelUser.findAll({ where: { idStudent: '0' || null } });
+        const findRequestLoan = await UserMongo.find({ idStudent: { $in: ['0', null] } });
         new OK({
             message: 'Lấy danh sách yêu cầu mượn sách thành công',
             metadata: findRequestLoan,
@@ -462,11 +433,11 @@ class controllerUser {
 
     async getStatistics(req, res) {
         try {
-            const totalUsers = await User.count();
-            const totalBooks = await Product.count();
-            const pendingRequests = await HistoryBook.count({ where: { status: 'pending' } });
+            const totalUsers = await UserMongo.countDocuments();
+            const totalBooks = await ProductMongo.countDocuments();
+            const pendingRequests = await HistoryBookMongo.countDocuments({ status: 'pending' });
 
-            const booksInStock = await Product.count({ where: { stock: { [Op.gt]: 0 } } });
+            const booksInStock = await ProductMongo.countDocuments({ stock: { $gt: 0 } });
             const booksOutOfStock = totalBooks - booksInStock;
 
             const bookStatusData = [
@@ -474,24 +445,20 @@ class controllerUser {
                 { type: 'Hết sách', value: booksOutOfStock },
             ];
 
-            const approvedLoans = await HistoryBook.count({ where: { status: 'success' } });
-            const pendingLoans = pendingRequests;
-            const rejectedLoans = await HistoryBook.count({ where: { status: 'cancel' } });
+            const approvedLoans = await HistoryBookMongo.countDocuments({ status: 'success' });
+            const rejectedLoans = await HistoryBookMongo.countDocuments({ status: 'cancel' });
 
-            /** Mượn quá hạn: đã duyệt, chưa trả, quá 14 ngày kể từ ngày mượn */
             const fourteenDaysAgo = new Date();
             fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-            const overdueLoans = await HistoryBook.count({
-                where: {
-                    status: 'success',
-                    returnDate: null,
-                    borrowDate: { [Op.lt]: fourteenDaysAgo },
-                },
+            const overdueLoans = await HistoryBookMongo.countDocuments({
+                status: 'success',
+                returnDate: null,
+                borrowDate: { $lt: fourteenDaysAgo },
             });
 
             const loanStatusData = [
                 { status: 'Đã duyệt', count: approvedLoans },
-                { status: 'Chờ duyệt', count: pendingLoans },
+                { status: 'Chờ duyệt', count: pendingRequests },
                 { status: 'Từ chối', count: rejectedLoans },
                 { status: 'Quá hạn', count: overdueLoans },
             ];

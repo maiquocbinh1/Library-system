@@ -1,12 +1,30 @@
-const { AuthFailureError, BadRequestError } = require('../core/error.response');
+const crypto = require('crypto');
+const mongoose = require('mongoose');
+const { BadRequestError } = require('../core/error.response');
 const { OK, Created } = require('../core/success.response');
-const modelProduct = require('../models/product.model');
 const ProductMongo = require('../models/product.mongo.model');
-const { Op } = require('sequelize');
-const { syncProductFromPlain, deleteProductMongo } = require('../services/mongoDualWrite');
 
-function useMongoForProducts() {
-    return process.env.USE_MONGODB === 'true' && !!process.env.MONGODB_URI;
+function random36() {
+    return crypto.randomUUID();
+}
+
+function toClientProduct(doc) {
+    const raw = doc.toObject ? doc.toObject() : doc;
+    return {
+        ...raw,
+        id: raw.mysqlId || (raw._id ? String(raw._id) : undefined),
+    };
+}
+
+async function findProductByAnyId(id) {
+    if (!id) return null;
+
+    if (mongoose.isValidObjectId(id)) {
+        const byMongoId = await ProductMongo.findById(id);
+        if (byMongoId) return byMongoId;
+    }
+
+    return ProductMongo.findOne({ mysqlId: String(id) });
 }
 
 class controllerProduct {
@@ -21,6 +39,7 @@ class controllerProduct {
             metadata: imageUrl,
         }).send(res);
     }
+
     async createProduct(req, res) {
         const {
             nameProduct,
@@ -34,6 +53,7 @@ class controllerProduct {
             publisher,
             publishingCompany,
         } = req.body;
+
         if (
             !nameProduct ||
             !image ||
@@ -48,84 +68,115 @@ class controllerProduct {
         ) {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
-        const product = await modelProduct.create({
+
+        const product = await ProductMongo.create({
+            mysqlId: random36(),
             nameProduct,
             image,
             description,
-            stock,
+            stock: Number(stock),
             covertType,
-            publishYear,
-            pages,
+            publishYear: Number(publishYear),
+            pages: Number(pages),
             language,
             publisher,
             publishingCompany,
         });
-        await syncProductFromPlain(product.get({ plain: true }));
+
         new Created({
             message: 'Create product success',
-            metadata: product,
+            metadata: toClientProduct(product),
         }).send(res);
     }
-    async getAllProduct(req, res) {
-        if (useMongoForProducts()) {
-            const products = await ProductMongo.find({}).lean();
-            new OK({
-                message: 'Get all product success (MongoDB Atlas)',
-                metadata: products,
-            }).send(res);
-            return;
-        }
 
-        const products = await modelProduct.findAll();
-        const raw = products.map((p) => p.get({ plain: true }));
+    async getAllProduct(req, res) {
+        const products = await ProductMongo.find({}).lean();
+        const metadata = products.map((p) => ({
+            ...p,
+            id: p.mysqlId || (p._id ? String(p._id) : undefined),
+        }));
+
         new OK({
             message: 'Get all product success',
-            metadata: raw,
+            metadata,
         }).send(res);
     }
 
     async getOneProduct(req, res) {
         const { id } = req.query;
-        const product = await modelProduct.findOne({ where: { id } });
+        const product = await findProductByAnyId(id);
         new OK({
             message: 'Get one product success',
-            metadata: product,
+            metadata: product ? toClientProduct(product) : null,
         }).send(res);
     }
 
     async searchProduct(req, res) {
-        const { keyword } = req.query;
-        const products = await modelProduct.findAll({ where: { nameProduct: { [Op.like]: `%${keyword}%` } } });
+        const keyword = String(req.query.keyword || '').trim();
+        const products = await ProductMongo.find({
+            nameProduct: { $regex: keyword, $options: 'i' },
+        }).lean();
+
+        const metadata = products.map((p) => ({
+            ...p,
+            id: p.mysqlId || (p._id ? String(p._id) : undefined),
+        }));
+
         new OK({
             message: 'Search product success',
-            metadata: products,
+            metadata,
         }).send(res);
     }
 
     async updateProduct(req, res) {
         const { id } = req.query;
-        const updated = await modelProduct.update(req.body, { where: { id } });
-        if (updated[0]) {
-            const row = await modelProduct.findOne({ where: { id } });
-            if (row) {
-                await syncProductFromPlain(row.get({ plain: true }));
+        const product = await findProductByAnyId(id);
+        if (!product) {
+            throw new BadRequestError('Sách không tồn tại');
+        }
+
+        const allowed = [
+            'nameProduct',
+            'image',
+            'description',
+            'stock',
+            'covertType',
+            'publishYear',
+            'pages',
+            'language',
+            'publisher',
+            'publishingCompany',
+        ];
+
+        for (const key of allowed) {
+            if (req.body[key] !== undefined) {
+                product[key] = req.body[key];
             }
         }
+
+        if (req.body.stock !== undefined) product.stock = Number(req.body.stock);
+        if (req.body.publishYear !== undefined) product.publishYear = Number(req.body.publishYear);
+        if (req.body.pages !== undefined) product.pages = Number(req.body.pages);
+
+        await product.save();
+
         new OK({
             message: 'Update product success',
-            metadata: updated,
+            metadata: [1],
         }).send(res);
     }
 
     async deleteProduct(req, res) {
         const { id } = req.body;
-        const product = await modelProduct.destroy({ where: { id } });
-        if (product) {
-            await deleteProductMongo(id);
+        const product = await findProductByAnyId(id);
+        if (!product) {
+            throw new BadRequestError('Sách không tồn tại');
         }
+
+        await ProductMongo.deleteOne({ _id: product._id });
         new OK({
             message: 'Delete product success',
-            metadata: product,
+            metadata: 1,
         }).send(res);
     }
 }

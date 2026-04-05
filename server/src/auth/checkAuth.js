@@ -1,6 +1,6 @@
-const { AuthFailureError, BadRequestError } = require('../core/error.response');
+const { AuthFailureError } = require('../core/error.response');
 const { verifyToken } = require('../services/tokenServices');
-const modelUser = require('../models/users.model');
+const UserMongo = require('../models/user.mongo.model');
 
 const asyncHandler = (fn) => {
     return (req, res, next) => {
@@ -30,8 +30,8 @@ const authAdmin = async (req, res, next) => {
         const token = user;
         const decoded = await verifyToken(token);
         const { id } = decoded;
-        const findUser = await modelUser.findOne({ where: { id } });
-        if (findUser.isAdmin === '0') {
+        const findUser = await UserMongo.findById(id);
+        if (!findUser || findUser.role !== 'admin') {
             throw new AuthFailureError('Bạn không có quyền truy cập');
         }
         req.user = decoded;
