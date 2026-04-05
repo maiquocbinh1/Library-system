@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Avatar, Descriptions, Button, Spin, message, Form, Input, Upload } from 'antd';
 import { UserOutlined, EditOutlined, UploadOutlined } from '@ant-design/icons';
-import { requestIdStudent, requestUpdateUser, requestUploadImage } from '../../config/request';
+import { requestReaderCode, requestUpdateUser, requestUploadImage } from '../../config/request';
 import { toast } from 'react-toastify';
 import { useStore } from '../../hooks/useStore';
 
@@ -10,7 +10,10 @@ const PersonalInfo = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [form] = Form.useForm();
 
-    const { dataUser } = useStore();
+    const { dataUser, refreshAuth } = useStore();
+    const readerCode = dataUser?.readerCode || dataUser?.idStudent || null;
+    const isReaderCodePending = readerCode === '0';
+    const hasReaderCode = Boolean(readerCode && readerCode !== '0');
 
     useEffect(() => {
         if (dataUser) {
@@ -18,9 +21,10 @@ const PersonalInfo = () => {
         }
     }, [dataUser, form]);
 
-    const handleRequestStudentId = async () => {
+    const handleRequestReaderCode = async () => {
         try {
-            const res = await requestIdStudent();
+            const res = await requestReaderCode();
+            await refreshAuth();
             toast.success(res.message);
         } catch (error) {
             toast.error(error.response.data.message);
@@ -30,6 +34,7 @@ const PersonalInfo = () => {
     const handleUpdateProfile = async (values) => {
         try {
             await requestUpdateUser(values);
+            await refreshAuth();
             toast.success('Cập nhật thông tin thành công');
             setIsEditing(false);
         } catch (error) {
@@ -53,7 +58,7 @@ const PersonalInfo = () => {
 
             try {
                 await requestUploadImage(formData);
-                window.location.reload();
+                await refreshAuth();
             } catch (error) {
                 console.log(error);
             }
@@ -72,7 +77,7 @@ const PersonalInfo = () => {
         { key: '2', label: 'Email', children: dataUser.email },
         { key: '3', label: 'Số điện thoại', children: dataUser.phone || 'Chưa cập nhật' },
         { key: '4', label: 'Địa chỉ', children: dataUser.address || 'Chưa cập nhật' },
-        { key: '5', label: 'Mã sinh viên', children: dataUser.idStudent || 'Chưa có' },
+        { key: '5', label: 'Mã độc giả', children: hasReaderCode ? readerCode : isReaderCodePending ? 'Đang chờ cấp mã' : 'Chưa có' },
     ];
 
     return (
@@ -126,9 +131,9 @@ const PersonalInfo = () => {
                     ) : (
                         <>
                             <Descriptions bordered layout="vertical" items={viewItems} />
-                            {!dataUser.idStudent && (
-                                <Button type="primary" onClick={handleRequestStudentId} className="mt-4">
-                                    Gửi yêu cầu cấp mã sinh viên
+                            {!hasReaderCode && !isReaderCodePending && (
+                                <Button type="primary" onClick={handleRequestReaderCode} className="mt-4">
+                                    Gửi yêu cầu cấp mã độc giả
                                 </Button>
                             )}
                         </>

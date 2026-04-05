@@ -1,27 +1,31 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Tag, Modal, Form, Input, message } from 'antd';
-import { requestGetRequestLoan, requestConfirmIdStudent } from '../../config/request';
+import { requestGetAllUsers, requestConfirmReaderCode, requestDeleteUser } from '../../config/request';
 
 const CardIssuanceManagement = () => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [isIssueModalVisible, setIsIssueModalVisible] = useState(false);
-    const [isCancelModalVisible, setIsCancelModalVisible] = useState(false);
-    const [selectedUser, setSelectedUser] = useState(null);
+    const [isCodeModalVisible, setIsCodeModalVisible] = useState(false);
+    const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+    const [selectedReader, setSelectedReader] = useState(null);
     const [form] = Form.useForm();
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const res = await requestGetRequestLoan();
+            const res = await requestGetAllUsers();
             const list = Array.isArray(res?.metadata) ? res.metadata : [];
-            const normalized = list.map((item) => ({
-                ...item,
-                id: item?.id || item?.mysqlId || (item?._id ? String(item._id) : undefined),
-            }));
+            const normalized = list
+                .map((item) => ({
+                    ...item,
+                    id: item?.id || item?.mysqlId || (item?._id ? String(item._id) : undefined),
+                    readerCode: item?.readerCode || item?.idStudent || null,
+                }))
+                .filter((item) => item?.role !== 'admin')
+                .filter((item) => item?.readerCode !== null && item?.readerCode !== undefined);
             setData(normalized);
         } catch (error) {
-            message.error('Không thể tải danh sách yêu cầu');
+            message.error('Không thể tải danh sách độc giả');
         } finally {
             setLoading(false);
         }
@@ -31,57 +35,74 @@ const CardIssuanceManagement = () => {
         fetchData();
     }, []);
 
-    const showIssueModal = (user) => {
-        setSelectedUser(user);
-        setIsIssueModalVisible(true);
+    const showCodeModal = (reader) => {
+        setSelectedReader(reader);
+        form.setFieldsValue({
+            readerCode: reader?.readerCode && reader.readerCode !== '0' ? reader.readerCode : undefined,
+        });
+        setIsCodeModalVisible(true);
     };
 
-    const handleIssueCancel = () => {
-        setIsIssueModalVisible(false);
+    const handleCodeCancel = () => {
+        setIsCodeModalVisible(false);
         form.resetFields();
-        setSelectedUser(null);
+        setSelectedReader(null);
     };
 
-    const handleIssueOk = () => {
+    const handleCodeOk = () => {
         form.submit();
     };
 
-    const onIssueFormFinish = async (values) => {
+    const onCodeFormFinish = async (values) => {
         setLoading(true);
         try {
-            if (!selectedUser?.id) {
-                message.error('Không tìm thấy người dùng hợp lệ');
+            if (!selectedReader?.id) {
+                message.error('Không tìm thấy độc giả hợp lệ');
                 return;
             }
-            const data = {
-                userId: selectedUser.id,
-                idStudent: values.idStudent,
+            const payload = {
+                userId: selectedReader.id,
+                idStudent: values.readerCode,
+                readerCode: values.readerCode,
             };
-            await requestConfirmIdStudent(data);
-            message.success(`Đã cấp thẻ cho ${selectedUser.fullName}`);
-            handleIssueCancel();
+            await requestConfirmReaderCode(payload);
+            const isEdit = selectedReader?.readerCode && selectedReader.readerCode !== '0';
+            message.success(isEdit ? `Đã cập nhật mã độc giả cho ${selectedReader.fullName}` : `Đã cấp mã độc giả cho ${selectedReader.fullName}`);
+            handleCodeCancel();
             fetchData();
         } catch (error) {
-            message.error('Cấp thẻ thất bại');
+            message.error('Cấp mã độc giả thất bại');
         } finally {
             setLoading(false);
         }
     };
 
-    const showCancelModal = (user) => {
-        setSelectedUser(user);
-        setIsCancelModalVisible(true);
+    const showDeleteModal = (reader) => {
+        setSelectedReader(reader);
+        setIsDeleteModalVisible(true);
     };
 
-    const handleCancelCancel = () => {
-        setIsCancelModalVisible(false);
-        setSelectedUser(null);
+    const handleDeleteCancel = () => {
+        setIsDeleteModalVisible(false);
+        setSelectedReader(null);
     };
 
-    const handleCancelOk = async () => {
-        message.info(`Đã hủy yêu cầu cấp thẻ cho ${selectedUser.fullName}`);
-        handleCancelCancel();
-        fetchData();
+    const handleDeleteOk = async () => {
+        setLoading(true);
+        try {
+            if (!selectedReader?.id) {
+                message.error('Không tìm thấy độc giả hợp lệ');
+                return;
+            }
+            await requestDeleteUser({ userId: selectedReader.id });
+            message.success(`Đã xóa độc giả ${selectedReader.fullName}`);
+            handleDeleteCancel();
+            fetchData();
+        } catch (error) {
+            message.error('Xóa độc giả thất bại');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const columns = [
@@ -108,29 +129,29 @@ const CardIssuanceManagement = () => {
         { title: 'Số điện thoại', dataIndex: 'phone', key: 'phone' },
         {
             title: 'Trạng thái',
-            dataIndex: 'idStudent',
-            key: 'idStudent',
-            render: (idStudent) => (
-                <Tag color={idStudent === '0' ? 'blue' : 'green'}>{idStudent === '0' ? 'Chờ cấp' : 'Đã cấp'}</Tag>
+            dataIndex: 'readerCode',
+            key: 'readerCode',
+            render: (readerCode) => (
+                <Tag color={readerCode === '0' ? 'blue' : 'green'}>{readerCode === '0' ? 'Chờ cấp mã' : 'Đã cấp mã'}</Tag>
             ),
+        },
+        {
+            title: 'Mã độc giả',
+            dataIndex: 'readerCode',
+            key: 'readerCodeDisplay',
+            render: (readerCode) => <span>{readerCode && readerCode !== '0' ? readerCode : '-'}</span>,
         },
         {
             title: 'Hành động',
             key: 'action',
             render: (text, record) => (
                 <div className="flex gap-2">
-                    {record.idStudent === '0' ? (
-                        <>
-                            <Button type="primary" onClick={() => showIssueModal(record)}>
-                                Cấp thẻ
-                            </Button>
-                            <Button type="primary" danger onClick={() => showCancelModal(record)}>
-                                Hủy
-                            </Button>
-                        </>
-                    ) : (
-                        <span>-</span>
-                    )}
+                    <Button type="primary" onClick={() => showCodeModal(record)}>
+                        {record.readerCode === '0' ? 'Cấp mã' : 'Sửa mã'}
+                    </Button>
+                    <Button type="primary" danger onClick={() => showDeleteModal(record)}>
+                        Xóa độc giả
+                    </Button>
                 </div>
             ),
         },
@@ -138,41 +159,41 @@ const CardIssuanceManagement = () => {
 
     return (
         <div>
-            <h2 className="text-2xl mb-4 font-bold">Quản lý cấp thẻ sinh viên</h2>
+            <h2 className="text-2xl mb-4 font-bold">Quản lý cấp mã độc giả</h2>
             <Table columns={columns} dataSource={data} rowKey={(record) => record.id || record.email} loading={loading} />
 
             <Modal
-                title={`Cấp thẻ cho: ${selectedUser?.fullName}`}
-                open={isIssueModalVisible}
-                onOk={handleIssueOk}
-                onCancel={handleIssueCancel}
+                title={`${selectedReader?.readerCode && selectedReader?.readerCode !== '0' ? 'Sửa mã độc giả' : 'Cấp mã độc giả'} cho: ${selectedReader?.fullName}`}
+                open={isCodeModalVisible}
+                onOk={handleCodeOk}
+                onCancel={handleCodeCancel}
                 confirmLoading={loading}
-                okText="Cấp thẻ"
+                okText={selectedReader?.readerCode && selectedReader?.readerCode !== '0' ? 'Lưu' : 'Cấp mã'}
                 cancelText="Hủy"
             >
-                <Form form={form} onFinish={onIssueFormFinish} layout="vertical">
+                <Form form={form} onFinish={onCodeFormFinish} layout="vertical">
                     <Form.Item
-                        name="idStudent"
-                        label="Mã số sinh viên"
-                        rules={[{ required: true, message: 'Vui lòng nhập mã số sinh viên!' }]}
+                        name="readerCode"
+                        label="Mã độc giả"
+                        rules={[{ required: true, message: 'Vui lòng nhập mã độc giả!' }]}
                     >
-                        <Input placeholder="Nhập mã số sinh viên" />
+                        <Input placeholder="Nhập mã độc giả" />
                     </Form.Item>
                 </Form>
             </Modal>
 
             <Modal
-                title="Xác nhận hủy yêu cầu"
-                open={isCancelModalVisible}
-                onOk={handleCancelOk}
-                onCancel={handleCancelCancel}
+                title="Xác nhận xóa độc giả"
+                open={isDeleteModalVisible}
+                onOk={handleDeleteOk}
+                onCancel={handleDeleteCancel}
                 confirmLoading={loading}
-                okText="Xác nhận hủy"
+                okText="Xóa độc giả"
                 cancelText="Không"
                 okButtonProps={{ danger: true }}
             >
                 <p>
-                    Bạn có chắc chắn muốn hủy yêu cầu cấp thẻ của <b>{selectedUser?.fullName}</b> không?
+                    Bạn có chắc chắn muốn xóa độc giả <b>{selectedReader?.fullName}</b> không?
                 </p>
             </Modal>
         </div>

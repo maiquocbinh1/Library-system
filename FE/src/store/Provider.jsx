@@ -8,6 +8,13 @@ import { requestAuth } from '../config/request';
 import { ToastContainer } from 'react-toastify';
 import ModalBuyBook from '../components/ModalBuyBook';
 
+function normalizeUser(user) {
+    if (!user || typeof user !== 'object') return {};
+    const id = user.id || user.mysqlId || (user._id ? String(user._id) : undefined);
+    const readerCode = user.readerCode || user.idStudent || null;
+    return { ...user, id, readerCode };
+}
+
 export function Provider({ children }) {
     const [dataUser, setDataUser] = useState({});
 
@@ -21,19 +28,30 @@ export function Provider({ children }) {
                 return;
             }
             const user = JSON.parse(originalText);
-            setDataUser(user);
+            setDataUser(normalizeUser(user));
         } catch (error) {
             console.error('Auth error:', error);
+            cookies.remove('logged');
+            setDataUser({});
         }
     };
 
-    useEffect(() => {
+    const refreshAuth = async () => {
         const token = cookies.get('logged');
-
         if (!token) {
+            setDataUser({});
             return;
         }
-        fetchAuth();
+        await fetchAuth();
+    };
+
+    useEffect(() => {
+        refreshAuth();
+        const handleAuthChanged = () => {
+            refreshAuth();
+        };
+        window.addEventListener('auth-changed', handleAuthChanged);
+        return () => window.removeEventListener('auth-changed', handleAuthChanged);
     }, []);
 
     return (
@@ -41,6 +59,7 @@ export function Provider({ children }) {
             <Context.Provider
                 value={{
                     dataUser,
+                    refreshAuth,
                 }}
             >
                 {children}

@@ -22,7 +22,7 @@ const menuItems = [
     { key: 'stats', icon: <LineChartOutlined />, label: 'Thống kê' },
     { key: 'book', icon: <BookOutlined />, label: 'Quản lý sách' },
     { key: 'loan', icon: <SolutionOutlined />, label: 'Quản lý mượn sách' },
-    { key: 'card', icon: <IdcardOutlined />, label: 'Quản lý cấp thẻ' },
+    { key: 'card', icon: <IdcardOutlined />, label: 'Quản lý mã độc giả' },
     { key: 'user', icon: <UserOutlined />, label: 'Quản lý người dùng' },
 ];
 
