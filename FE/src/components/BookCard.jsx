@@ -21,7 +21,7 @@ function BookCard({ book }) {
                             isInStock ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                         }`}
                     >
-                        {isInStock ? 'Con sach' : 'Het sach'}
+                        {isInStock ? 'Còn sách' : 'Hết sách'}
                     </span>
                 </div>
 
@@ -29,7 +29,7 @@ function BookCard({ book }) {
                     to={`/product/${book?.id || book?._id || ''}`}
                     className="block w-full rounded-md bg-blue-600 px-3 py-2 text-center text-sm font-medium text-white hover:bg-blue-700"
                 >
-                    Xem chi tiet
+                    Xem thêm
                 </Link>
             </div>
         </div>

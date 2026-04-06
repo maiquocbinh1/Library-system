@@ -5,7 +5,6 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { Link, useNavigate } from 'react-router-dom';
 import { requestLogin } from '../config/request';
-import { toast } from 'react-toastify';
 import imagesLogin from '../assets/images/login.jpg';
 import { useStore } from '../hooks/useStore';
 
@@ -17,13 +16,15 @@ function LoginUser() {
         setLoading(true);
 
         try {
-            await requestLogin(values);
+            const res = await requestLogin(values);
+            const role = String(res?.data?.metadata?.user?.role || '').toLowerCase();
             await refreshAuth();
-            toast.success('Đăng nhập thành công!');
-            setLoading(false);
-            navigate('/');
+            message.success('Đăng nhập thành công!');
+            navigate(role === 'admin' ? '/admin' : '/');
         } catch (error) {
-            toast.error(error.response.data.message);
+            const errorMessage = error?.response?.data?.message || 'Tài khoản hoặc mật khẩu không chính xác';
+            message.error(errorMessage);
+        } finally {
             setLoading(false);
         }
     };

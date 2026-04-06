@@ -113,6 +113,20 @@ async function verifyUserToken(token) {
     return jwt.verify(token, apiKey.publicKey, { algorithms: ['RS256'] });
 }
 
+function toSafeUser(user) {
+    if (!user) return null;
+    return {
+        id: String(user._id),
+        mysqlId: user.mysqlId,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        typeLogin: user.typeLogin,
+        phone: user.phone,
+        address: user.address,
+    };
+}
+
 class controllerUser {
     async registerUser(req, res) {
         const { fullName, phone, address, email, password } = req.body;
@@ -145,11 +159,11 @@ class controllerUser {
             address: dataUser.address,
             phone: dataUser.phone,
         });
-        const refreshToken = await signTokenForUser(userId, {}, '7d');
+        const refreshToken = await signTokenForUser(userId, { role: dataUser.role }, '7d');
 
         setAuthCookies(res, token, refreshToken);
 
-        new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken } }).send(res);
+        new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken, user: toSafeUser(dataUser) } }).send(res);
     }
 
     async loginUser(req, res) {
@@ -172,11 +186,11 @@ class controllerUser {
         await createApiKey(userId);
 
         const token = await signTokenForUser(userId, { role: user.role });
-        const refreshToken = await signTokenForUser(userId, {}, '7d');
+        const refreshToken = await signTokenForUser(userId, { role: user.role }, '7d');
 
         setAuthCookies(res, token, refreshToken);
 
-        new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken } }).send(res);
+        new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken, user: toSafeUser(user) } }).send(res);
     }
 
     async authUser(req, res) {
@@ -198,7 +212,7 @@ class controllerUser {
             throw new AuthFailureError('Vui lòng đăng nhập lại');
         }
 
-        const token = await signTokenForUser(String(user._id));
+        const token = await signTokenForUser(String(user._id), { role: user.role });
         setAuthCookies(res, token);
 
         new OK({ message: 'Refresh token thành công', metadata: { token } }).send(res);
@@ -254,11 +268,11 @@ class controllerUser {
         const userId = String(user._id);
         await createApiKey(userId);
         const token = await signTokenForUser(userId, { role: user.role });
-        const refreshToken = await signTokenForUser(userId, {}, '7d');
+        const refreshToken = await signTokenForUser(userId, { role: user.role }, '7d');
 
         setAuthCookies(res, token, refreshToken);
 
-        new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken } }).send(res);
+        new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken, user: toSafeUser(user) } }).send(res);
     }
 
     async forgotPassword(req, res) {
