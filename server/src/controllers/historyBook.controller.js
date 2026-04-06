@@ -11,6 +11,7 @@ const SendMailBookBorrowFailed = require('../utils/SendMailFail');
 
 const ALLOWED_HISTORY_STATUS = ['pending', 'success', 'cancel'];
 const MAX_BORROW_DAYS = 30;
+const MAX_ACTIVE_BORROW = 3;
 
 function random36() {
     return crypto.randomUUID();
@@ -57,6 +58,31 @@ function toClientHistory(doc) {
     };
 }
 
+function getUserIdCandidates(user) {
+    const ids = [String(user._id)];
+    if (user.mysqlId) ids.push(String(user.mysqlId));
+    return ids;
+}
+
+async function getActiveBorrowCount(user) {
+    const userIds = getUserIdCandidates(user);
+    return HistoryBookMongo.countDocuments({
+        userId: { $in: userIds },
+        status: { $in: ['pending', 'success'] },
+    });
+}
+
+async function hasOverdueBorrow(user) {
+    const userIds = getUserIdCandidates(user);
+    const now = new Date();
+    const overdue = await HistoryBookMongo.findOne({
+        userId: { $in: userIds },
+        status: { $in: ['pending', 'success'] },
+        returnDate: { $ne: null, $lt: now },
+    }).lean();
+    return Boolean(overdue);
+}
+
 class historyBookController {
     async createHistoryBook(req, res) {
         const { id } = req.user;
@@ -66,6 +92,16 @@ class historyBookController {
         }
         if (user.idStudent === null || user.idStudent === '0' || user.idStudent === '') {
             throw new BadRequestError('Bạn chưa có ID sinh viên !!!');
+        }
+
+        const activeBorrowCount = await getActiveBorrowCount(user);
+        if (activeBorrowCount >= MAX_ACTIVE_BORROW) {
+            throw new BadRequestError(`Bạn chỉ được mượn tối đa ${MAX_ACTIVE_BORROW} sách chưa trả`);
+        }
+
+        const overdueBorrow = await hasOverdueBorrow(user);
+        if (overdueBorrow) {
+            throw new BadRequestError('Bạn đang có sách quá hạn chưa trả, vui lòng hoàn tất trước khi mượn thêm');
         }
 
         const { fullName, phoneNumber, address, bookId, borrowDate, returnDate, quantity } = req.body;

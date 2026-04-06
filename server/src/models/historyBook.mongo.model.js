@@ -16,4 +16,6 @@ const historyBookMongoSchema = new mongoose.Schema(
     { timestamps: true, collection: 'library_history_books' },
 );
 
+historyBookMongoSchema.index({ userId: 1, status: 1, returnDate: 1 });
+
 module.exports = mongoose.models.HistoryBookMongo || mongoose.model('HistoryBookMongo', historyBookMongoSchema);

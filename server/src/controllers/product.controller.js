@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const { BadRequestError } = require('../core/error.response');
 const { OK, Created } = require('../core/success.response');
 const ProductMongo = require('../models/product.mongo.model');
+const HistoryBookMongo = require('../models/historyBook.mongo.model');
 
 function random36() {
     return crypto.randomUUID();
@@ -171,6 +172,17 @@ class controllerProduct {
         const product = await findProductByAnyId(id);
         if (!product) {
             throw new BadRequestError('Sách không tồn tại');
+        }
+
+        const productIdCandidates = [String(product._id)];
+        if (product.mysqlId) productIdCandidates.push(String(product.mysqlId));
+
+        const activeBorrow = await HistoryBookMongo.findOne({
+            bookId: { $in: productIdCandidates },
+            status: { $in: ['pending', 'success'] },
+        }).lean();
+        if (activeBorrow) {
+            throw new BadRequestError('Không thể xóa vì sách đang được mượn hoặc chưa hoàn tất phiếu');
         }
 
         await ProductMongo.deleteOne({ _id: product._id });

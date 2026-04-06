@@ -1,14 +1,25 @@
 import React, { useState } from 'react';
-import { Layout, Menu } from 'antd';
-import { UserOutlined, SolutionOutlined, IdcardOutlined, BookOutlined, LineChartOutlined } from '@ant-design/icons';
+import { Avatar, Dropdown, Layout, Menu, message } from 'antd';
+import {
+    UserOutlined,
+    SolutionOutlined,
+    IdcardOutlined,
+    BookOutlined,
+    LineChartOutlined,
+    LogoutOutlined,
+    DownOutlined,
+} from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 
 import UserManagement from './UserManagement';
 import LoanRequestManagement from './LoanRequestManagement';
 import CardIssuanceManagement from './CardIssuanceManagement';
 import BookManagement from './BookManagement';
 import Statistics from './Statistics';
+import { requestLogout } from '../../config/request';
+import { useStore } from '../../hooks/useStore';
 
-const { Header, Content, Sider, Footer } = Layout;
+const { Header, Content, Sider } = Layout;
 
 const components = {
     stats: <Statistics />,
@@ -28,15 +39,47 @@ const menuItems = [
 
 const IndexDashBroad = () => {
     const [selectedKey, setSelectedKey] = useState('stats');
+    const [collapsed, setCollapsed] = useState(false);
+    const navigate = useNavigate();
+    const { dataUser, refreshAuth } = useStore();
 
     const renderContent = () => {
         return components[selectedKey] || <div>Chọn một mục từ menu</div>;
     };
 
+    const handleLogout = async () => {
+        try {
+            await requestLogout();
+            await refreshAuth();
+            navigate('/');
+        } catch (error) {
+            message.error(error?.response?.data?.message || 'Đăng xuất thất bại');
+        }
+    };
+
+    const dropdownItems = [
+        {
+            key: 'logout',
+            icon: <LogoutOutlined />,
+            label: 'Đăng xuất',
+            danger: true,
+            onClick: handleLogout,
+        },
+    ];
+
     return (
-        <Layout style={{ minHeight: '100vh' }}>
-            <Sider breakpoint="lg" collapsedWidth="0">
-                <div className="h-8 m-4 bg-gray-700 text-white text-center leading-8">Logo</div>
+        <Layout className="min-h-screen">
+            <Sider
+                theme="dark"
+                collapsible
+                collapsed={collapsed}
+                onCollapse={setCollapsed}
+                breakpoint="lg"
+                collapsedWidth={80}
+            >
+                <div className="mx-4 my-4 rounded-md border border-white/10 bg-white/5 px-2 py-3 text-center text-sm font-bold tracking-wide text-white">
+                    {collapsed ? 'ADMIN' : 'ADMIN PANEL'}
+                </div>
                 <Menu
                     theme="dark"
                     mode="inline"
@@ -45,14 +88,27 @@ const IndexDashBroad = () => {
                     onClick={(e) => setSelectedKey(e.key)}
                 />
             </Sider>
-            <Layout>
-                <Header className="bg-white p-0" />
-                <Content style={{ margin: '24px 16px 0' }}>
-                    <div className="p-6 bg-white" style={{ minHeight: 360 }}>
+            <Layout className="bg-gray-50">
+                <Header className="flex items-center justify-end bg-white px-6 shadow-sm">
+                    <Dropdown menu={{ items: dropdownItems }} placement="bottomRight" trigger={['click']}>
+                        <button
+                            type="button"
+                            className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-gray-100"
+                        >
+                            <Avatar size={32} icon={<UserOutlined />} src={dataUser?.avatar || undefined} />
+                            <div className="hidden text-left sm:block">
+                                <p className="text-sm font-semibold text-gray-900">{dataUser?.fullName || 'Admin'}</p>
+                                <p className="text-xs text-gray-500">{dataUser?.email || 'admin@library.local'}</p>
+                            </div>
+                            <DownOutlined className="text-xs text-gray-500" />
+                        </button>
+                    </Dropdown>
+                </Header>
+                <Content className="m-4">
+                    <div className="min-h-[calc(100vh-96px)] rounded-lg bg-white p-6 shadow-sm">
                         {renderContent()}
                     </div>
                 </Content>
-                <Footer style={{ textAlign: 'center' }}>Library Management ©2024 Created by Cascade</Footer>
             </Layout>
         </Layout>
     );
