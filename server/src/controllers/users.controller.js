@@ -403,6 +403,16 @@ class controllerUser {
             throw new BadRequestError('Người dùng không tồn tại');
         }
 
+        const userIdCandidates = [String(user._id)];
+        if (user.mysqlId) userIdCandidates.push(String(user.mysqlId));
+        const activeBorrow = await HistoryBookMongo.findOne({
+            userId: { $in: userIdCandidates },
+            status: { $in: ['pending', 'success'] },
+        }).lean();
+        if (activeBorrow) {
+            throw new BadRequestError('Không thể xóa vì độc giả chưa trả hết sách');
+        }
+
         const userObjectId = String(user._id);
         await UserMongo.deleteOne({ _id: user._id });
         await ApiKeyMongo.deleteMany({ userId: userObjectId });

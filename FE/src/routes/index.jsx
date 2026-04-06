@@ -2,7 +2,7 @@ import Home from '../pages/Home';
 import DetailProduct from '../pages/DetailProduct';
 import Login from '../pages/Login';
 import RegisterUser from '../pages/RegisterUser';
-import Admin from '../pages/DashbroadComponents/index';
+import Admin from '../pages/Admin';
 import InfoUser from '../pages/InfoUser';
 import ForgotPassword from '../pages/ForgotPassword';
 import Categories from '../pages/Categories';
