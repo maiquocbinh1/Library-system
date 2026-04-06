@@ -1,14 +1,18 @@
-import App from '../App';
+import Home from '../pages/Home';
 import DetailProduct from '../pages/DetailProduct';
 import Login from '../pages/Login';
 import RegisterUser from '../pages/RegisterUser';
 import Admin from '../pages/DashbroadComponents/index';
 import InfoUser from '../pages/InfoUser';
 import ForgotPassword from '../pages/ForgotPassword';
+import Categories from '../pages/Categories';
+import Rules from '../pages/Rules';
+import Contact from '../pages/Contact';
+import AdminRoute from '../components/AdminRoute';
 export const routes = [
     {
         path: '/',
-        component: <App />,
+        component: <Home />,
     },
     {
         path: '/product/:id',
@@ -24,7 +28,11 @@ export const routes = [
     },
     {
         path: '/admin',
-        component: <Admin />,
+        component: (
+            <AdminRoute>
+                <Admin />
+            </AdminRoute>
+        ),
     },
     {
         path: '/infoUser',
@@ -33,5 +41,17 @@ export const routes = [
     {
         path: '/forgot-password',
         component: <ForgotPassword />,
+    },
+    {
+        path: '/categories',
+        component: <Categories />,
+    },
+    {
+        path: '/rules',
+        component: <Rules />,
+    },
+    {
+        path: '/contact',
+        component: <Contact />,
     },
 ];

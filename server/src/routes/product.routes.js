@@ -16,15 +16,16 @@ const storage = multer.diskStorage({
 var upload = multer({ storage: storage });
 
 const { authUser, asyncHandler } = require('../auth/checkAuth');
+const { isAdmin } = require('../middlewares/admin.middleware');
 
 const controllerProduct = require('../controllers/product.controller');
 
-router.post('/upload-image', upload.single('image'), asyncHandler(controllerProduct.uploadImage));
-router.post('/create', upload.single('image'), asyncHandler(controllerProduct.createProduct));
+router.post('/upload-image', authUser, isAdmin, upload.single('image'), asyncHandler(controllerProduct.uploadImage));
+router.post('/create', authUser, isAdmin, upload.single('image'), asyncHandler(controllerProduct.createProduct));
 router.get('/get-all', asyncHandler(controllerProduct.getAllProduct));
 router.get('/get-one', asyncHandler(controllerProduct.getOneProduct));
 router.get('/search', asyncHandler(controllerProduct.searchProduct));
-router.post('/update', asyncHandler(controllerProduct.updateProduct));
-router.post('/delete', asyncHandler(controllerProduct.deleteProduct));
+router.post('/update', authUser, isAdmin, asyncHandler(controllerProduct.updateProduct));
+router.post('/delete', authUser, isAdmin, asyncHandler(controllerProduct.deleteProduct));
 
 module.exports = router;

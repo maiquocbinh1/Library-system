@@ -14,6 +14,7 @@ const PersonalInfo = () => {
     const readerCode = dataUser?.readerCode || dataUser?.idStudent || null;
     const isReaderCodePending = readerCode === '0';
     const hasReaderCode = Boolean(readerCode && readerCode !== '0');
+    const readerId = dataUser?.mysqlId || dataUser?.id || dataUser?._id || null;
 
     useEffect(() => {
         if (dataUser) {
@@ -76,8 +77,25 @@ const PersonalInfo = () => {
         { key: '1', label: 'Họ và tên', children: dataUser.fullName },
         { key: '2', label: 'Email', children: dataUser.email },
         { key: '3', label: 'Số điện thoại', children: dataUser.phone || 'Chưa cập nhật' },
-        { key: '4', label: 'Địa chỉ', children: dataUser.address || 'Chưa cập nhật' },
-        { key: '5', label: 'Mã độc giả', children: hasReaderCode ? readerCode : isReaderCodePending ? 'Đang chờ cấp mã' : 'Chưa có' },
+        {
+            key: '4',
+            label: 'Địa chỉ',
+            children: dataUser?.address ? (
+                dataUser.address
+            ) : (
+                <span className="italic text-gray-500">Chưa điền thông tin</span>
+            ),
+        },
+        {
+            key: '5',
+            label: 'Mã độc giả',
+            children: readerId ? `Mã độc giả: ${readerId}` : <span className="italic text-gray-500">Chưa điền thông tin</span>,
+        },
+        {
+            key: '6',
+            label: 'Trạng thái cấp mã',
+            children: hasReaderCode ? readerCode : isReaderCodePending ? 'Đang chờ cấp mã' : 'Chưa có',
+        },
     ];
 
     return (

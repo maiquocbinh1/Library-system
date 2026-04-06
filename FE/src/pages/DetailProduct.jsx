@@ -1,24 +1,18 @@
 import { useEffect } from 'react';
 import Footer from '../components/Footer';
 import Header from '../components/Header';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { requestGetBookshelf, requestGetOneProduct, requestToggleFavorite, requestToggleReadLater } from '../config/request';
+import { Link, useParams } from 'react-router-dom';
+import { requestGetOneProduct } from '../config/request';
 import { useState } from 'react';
-import { Button, message, Tooltip } from 'antd';
-import { HeartFilled, HeartOutlined, BookFilled, BookOutlined } from '@ant-design/icons';
+import { message } from 'antd';
 
 import ModalBorrowBook from '../components/ModalBuyBook';
 import { useStore } from '../hooks/useStore';
 
 function DetailProduct() {
     const { id } = useParams();
-    const navigate = useNavigate();
     const [dataProduct, setDataProduct] = useState({});
     const [visible, setVisible] = useState(false);
-    const [isFavorite, setIsFavorite] = useState(false);
-    const [isReadLater, setIsReadLater] = useState(false);
-    const [loadingFavorite, setLoadingFavorite] = useState(false);
-    const [loadingReadLater, setLoadingReadLater] = useState(false);
 
     const { dataUser } = useStore();
     const productImageSrc = dataProduct?.image?.startsWith('http')
@@ -33,86 +27,21 @@ function DetailProduct() {
         };
     };
 
-    const findInBooks = (books, productId) => {
-        const targetId = String(productId);
-        return (books || []).some((book) => {
-            const bookId = String(book?.id || book?.mysqlId || book?._id || '');
-            return bookId === targetId;
-        });
-    };
-
-    const fetchBookshelfStatus = async (productId) => {
-        if (!dataUser?.id || !productId) return;
-        try {
-            const res = await requestGetBookshelf();
-            const payload = res?.metadata || {};
-            setIsFavorite(findInBooks(payload.favoriteBooks, productId));
-            setIsReadLater(findInBooks(payload.readLaterBooks, productId));
-        } catch (error) {
-            setIsFavorite(false);
-            setIsReadLater(false);
-        }
-    };
-
     useEffect(() => {
         const fetchData = async () => {
             try {
                 const res = await requestGetOneProduct(id);
                 const product = normalizeProduct(res?.metadata);
                 setDataProduct(product);
-                await fetchBookshelfStatus(product?.id || id);
-            } catch (error) {
+            } catch {
                 message.error('Không thể tải chi tiết sách');
             }
         };
         fetchData();
-    }, [id, dataUser?.id]);
+    }, [id]);
 
     const showModal = async () => {
         setVisible(true);
-    };
-
-    const ensureLoggedIn = () => {
-        if (dataUser?.id) return true;
-        message.warning('Vui lòng đăng nhập để sử dụng tủ sách');
-        navigate('/login');
-        return false;
-    };
-
-    const handleToggleFavorite = async () => {
-        if (!ensureLoggedIn()) return;
-        const productId = dataProduct?.id || id;
-        if (!productId) return;
-
-        setLoadingFavorite(true);
-        try {
-            const res = await requestToggleFavorite(productId);
-            const nextState = Boolean(res?.metadata?.isFavorite);
-            setIsFavorite(nextState);
-            message.success(nextState ? 'Đã thêm vào yêu thích' : 'Đã bỏ khỏi yêu thích');
-        } catch (error) {
-            message.error(error?.response?.data?.message || 'Không thể cập nhật yêu thích');
-        } finally {
-            setLoadingFavorite(false);
-        }
-    };
-
-    const handleToggleReadLater = async () => {
-        if (!ensureLoggedIn()) return;
-        const productId = dataProduct?.id || id;
-        if (!productId) return;
-
-        setLoadingReadLater(true);
-        try {
-            const res = await requestToggleReadLater(productId);
-            const nextState = Boolean(res?.metadata?.isReadLater);
-            setIsReadLater(nextState);
-            message.success(nextState ? 'Đã thêm vào đọc sau' : 'Đã bỏ khỏi đọc sau');
-        } catch (error) {
-            message.error(error?.response?.data?.message || 'Không thể cập nhật đọc sau');
-        } finally {
-            setLoadingReadLater(false);
-        }
     };
 
     if (!dataUser) return <div>loading....</div>;
@@ -121,7 +50,7 @@ function DetailProduct() {
         <div className="min-h-screen bg-gray-50">
             <Header />
 
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-20">
                 <nav className="flex items-center space-x-2 text-sm text-gray-500">
                     <Link to={'/'}>Trang chủ</Link>
                     <span>/</span>
@@ -200,26 +129,6 @@ function DetailProduct() {
                                 >
                                     Mượn ngay
                                 </button>
-                                <div className="flex items-center gap-3">
-                                    <Tooltip title="Thêm/Bỏ yêu thích">
-                                        <Button
-                                            icon={isFavorite ? <HeartFilled className="text-red-500" /> : <HeartOutlined />}
-                                            onClick={handleToggleFavorite}
-                                            loading={loadingFavorite}
-                                        >
-                                            Yêu thích
-                                        </Button>
-                                    </Tooltip>
-                                    <Tooltip title="Thêm/Bỏ đọc sau">
-                                        <Button
-                                            icon={isReadLater ? <BookFilled className="text-yellow-500" /> : <BookOutlined />}
-                                            onClick={handleToggleReadLater}
-                                            loading={loadingReadLater}
-                                        >
-                                            Đọc sau
-                                        </Button>
-                                    </Tooltip>
-                                </div>
                             </div>
                         </div>
                     </div>

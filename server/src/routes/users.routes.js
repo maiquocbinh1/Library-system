@@ -16,6 +16,7 @@ const storage = multer.diskStorage({
 var upload = multer({ storage: storage });
 
 const { authUser, asyncHandler } = require('../auth/checkAuth');
+const { isAdmin } = require('../middlewares/admin.middleware');
 
 const controllerUser = require('../controllers/users.controller');
 
@@ -28,15 +29,15 @@ router.post('/update-user', authUser, upload.single('avatar'), asyncHandler(cont
 router.post('/login-google', asyncHandler(controllerUser.loginGoogle));
 router.post('/forgot-password', asyncHandler(controllerUser.forgotPassword));
 router.post('/reset-password', asyncHandler(controllerUser.resetPassword));
-router.get('/get-users', asyncHandler(controllerUser.getUsers));
-router.post('/update-user-admin', asyncHandler(controllerUser.updateUser));
-router.post('/delete-user', asyncHandler(controllerUser.deleteUser));
-router.post('/update-password', asyncHandler(controllerUser.updatePassword));
+router.get('/get-users', authUser, isAdmin, asyncHandler(controllerUser.getUsers));
+router.post('/update-user-admin', authUser, isAdmin, asyncHandler(controllerUser.updateUser));
+router.post('/delete-user', authUser, isAdmin, asyncHandler(controllerUser.deleteUser));
+router.post('/update-password', authUser, isAdmin, asyncHandler(controllerUser.updatePassword));
 router.post('/upload-image', upload.single('image'), authUser, asyncHandler(controllerUser.changeAvatar));
 
 router.post('/request-id-student', authUser, asyncHandler(controllerUser.requestIdStudent));
-router.post('/confirm-id-student', asyncHandler(controllerUser.confirmIdStudent));
-router.get('/get-request-loan', asyncHandler(controllerUser.getRequestLoan));
-router.get('/statistics', asyncHandler(controllerUser.getStatistics));
+router.post('/confirm-id-student', authUser, isAdmin, asyncHandler(controllerUser.confirmIdStudent));
+router.get('/get-request-loan', authUser, isAdmin, asyncHandler(controllerUser.getRequestLoan));
+router.get('/statistics', authUser, isAdmin, asyncHandler(controllerUser.getStatistics));
 
 module.exports = router;

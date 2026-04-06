@@ -12,8 +12,6 @@ const userMongoSchema = new mongoose.Schema(
         role: { type: String, enum: ['admin', 'user'], default: 'user' },
         typeLogin: { type: String, enum: ['google', 'email'], required: true },
         idStudent: { type: String, default: null },
-        favoriteBooks: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProductMongo' }],
-        readLaterBooks: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ProductMongo' }],
     },
     { timestamps: true, collection: 'library_users' },
 );

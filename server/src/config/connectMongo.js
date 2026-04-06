@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const ReaderCodeMongo = require('../models/readerCode.mongo.model');
+const AdminMongo = require('../models/admin.mongo.model');
 
 async function connectMongo() {
     const uri = process.env.MONGODB_URI;
@@ -20,6 +21,14 @@ async function connectMongo() {
             }
         }
         await ReaderCodeMongo.syncIndexes();
+        try {
+            await AdminMongo.createCollection();
+        } catch (createErr) {
+            if (createErr?.code !== 48) {
+                throw createErr;
+            }
+        }
+        await AdminMongo.syncIndexes();
         console.log('[MongoDB] Kết nối Atlas thành công');
         return true;
     } catch (err) {

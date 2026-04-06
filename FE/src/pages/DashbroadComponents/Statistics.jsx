@@ -39,7 +39,13 @@ const Statistics = () => {
 
     return (
         <div>
-            <h2 className="text-2xl mb-4">Thống kê tổng quan</h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-2xl">Thống kê tổng quan</h2>
+                <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                    <UserOutlined className="text-blue-600" />
+                    <span className="text-sm font-medium text-blue-700">Chào mừng Admin</span>
+                </div>
+            </div>
             <Row gutter={16} className="mb-6">
                 <Col span={8}>
                     <Card>
