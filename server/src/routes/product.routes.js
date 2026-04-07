@@ -22,6 +22,7 @@ const controllerProduct = require('../controllers/product.controller');
 
 router.post('/upload-image', authUser, isAdmin, upload.single('image'), asyncHandler(controllerProduct.uploadImage));
 router.post('/create', authUser, isAdmin, upload.single('image'), asyncHandler(controllerProduct.createProduct));
+router.get('/sync-book-codes', authUser, isAdmin, asyncHandler(controllerProduct.syncOldBooksCode));
 router.get('/get-all', asyncHandler(controllerProduct.getAllProduct));
 router.get('/get-one', asyncHandler(controllerProduct.getOneProduct));
 router.get('/search', asyncHandler(controllerProduct.searchProduct));

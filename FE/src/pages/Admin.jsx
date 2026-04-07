@@ -41,7 +41,6 @@ const menuItems = [
 
 function Admin() {
     const [selectedKey, setSelectedKey] = useState('stats');
-    const [collapsed, setCollapsed] = useState(false);
     const navigate = useNavigate();
     const { dataUser, refreshAuth } = useStore();
 
@@ -70,23 +69,19 @@ function Admin() {
         },
     ];
 
-    const siderWidth = collapsed ? 88 : 260;
-
     return (
         <Layout className="min-h-screen bg-[#f5f7fb]">
             <Sider
                 theme="light"
-                collapsible
-                collapsed={collapsed}
-                onCollapse={setCollapsed}
                 breakpoint="lg"
-                collapsedWidth={88}
                 width={260}
                 style={{
                     position: 'fixed',
                     left: 0,
                     top: 0,
                     bottom: 0,
+                    height: '100vh',
+                    overflow: 'auto',
                     borderRight: '1px solid #5b43d6',
                     background: 'linear-gradient(180deg, #5b43d6 0%, #7b5cff 55%, #8b5cf6 100%)',
                     zIndex: 20,
@@ -107,12 +102,9 @@ function Admin() {
                 />
             </Sider>
 
-            <Layout style={{ marginLeft: siderWidth, transition: 'margin-left 0.2s ease' }}>
-                <Header className="flex h-16 items-center justify-between bg-white px-8 shadow-sm">
-                    <Typography.Title
-                        level={4}
-                        className={`!mb-0 ${selectedKey === 'stats' ? '!text-violet-700' : '!text-slate-800'}`}
-                    >
+            <Layout style={{ marginLeft: 260 }}>
+                <Header className="flex h-16 w-full items-center justify-between bg-white px-8 shadow-sm">
+                    <Typography.Title level={4} className="!mb-0 !text-2xl !font-bold !text-purple-700">
                         {currentTabTitle}
                     </Typography.Title>
 
