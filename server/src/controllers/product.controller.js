@@ -9,6 +9,33 @@ function random36() {
     return crypto.randomUUID();
 }
 
+async function generateUniqueBookCode() {
+    // Lấy mã lớn nhất hiện tại để sinh mã kế tiếp theo chuẩn B001, B002...
+    const latestBook = await ProductMongo.findOne({
+        bookCode: { $exists: true, $ne: null, $ne: '' },
+    })
+        .sort({ bookCode: -1 })
+        .select('bookCode')
+        .lean();
+
+    let nextNumber = 1;
+    if (latestBook?.bookCode) {
+        const numericPart = Number.parseInt(String(latestBook.bookCode).replace(/^B/i, ''), 10);
+        if (Number.isFinite(numericPart)) {
+            nextNumber = numericPart + 1;
+        }
+    }
+
+    // Tránh trùng mã trong trường hợp dữ liệu cũ không liên tục
+    for (let retry = 0; retry < 100; retry += 1) {
+        const candidate = `B${String(nextNumber + retry).padStart(3, '0')}`;
+        const existed = await ProductMongo.findOne({ bookCode: candidate }).select('_id').lean();
+        if (!existed) return candidate;
+    }
+
+    throw new BadRequestError('Không thể tạo mã sách mới, vui lòng thử lại');
+}
+
 function toClientProduct(doc) {
     const raw = doc.toObject ? doc.toObject() : doc;
     return {
@@ -53,6 +80,7 @@ class controllerProduct {
             language,
             publisher,
             publishingCompany,
+            category,
         } = req.body;
 
         if (
@@ -65,15 +93,19 @@ class controllerProduct {
             !pages ||
             !language ||
             !publisher ||
-            !publishingCompany
+            !publishingCompany ||
+            !category
         ) {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
 
+        const bookCode = await generateUniqueBookCode();
         const product = await ProductMongo.create({
             mysqlId: random36(),
+            bookCode,
             nameProduct,
             image,
+            category,
             description,
             stock: Number(stock),
             covertType,
@@ -87,6 +119,28 @@ class controllerProduct {
         new Created({
             message: 'Create product success',
             metadata: toClientProduct(product),
+        }).send(res);
+    }
+
+    async syncOldBooksCode(req, res) {
+        // Chạy 1 lần để cấp mã cho sách cũ chưa có bookCode
+        const booksWithoutCode = await ProductMongo.find({
+            $or: [{ bookCode: { $exists: false } }, { bookCode: null }, { bookCode: '' }],
+        }).sort({ createdAt: 1 });
+
+        let updatedCount = 0;
+        for (const book of booksWithoutCode) {
+            const newCode = await generateUniqueBookCode();
+            book.bookCode = newCode;
+            await book.save();
+            updatedCount += 1;
+        }
+
+        new OK({
+            message: 'Đồng bộ mã sách thành công',
+            metadata: {
+                updatedCount,
+            },
         }).send(res);
     }
 
@@ -138,6 +192,7 @@ class controllerProduct {
 
         const allowed = [
             'nameProduct',
+            'category',
             'image',
             'description',
             'stock',

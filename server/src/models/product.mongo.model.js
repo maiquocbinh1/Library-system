@@ -10,8 +10,10 @@ const productMongoSchema = new mongoose.Schema(
             index: true,
             maxlength: 36,
         },
+        bookCode: { type: String, unique: true, sparse: true, index: true, trim: true },
         image: { type: String, required: true },
         nameProduct: { type: String, required: true },
+        category: { type: String, default: null, trim: true },
         description: { type: String, default: '' },
         stock: { type: Number, required: true },
         covertType: {
