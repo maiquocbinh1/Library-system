@@ -2,8 +2,14 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 
 function BookCard({ book }) {
-    const imageSrc = book?.image?.startsWith('http') ? book.image : `http://localhost:3000/${book?.image || ''}`;
+    const imageSrc = (() => {
+        const raw = String(book?.image || '').trim();
+        if (!raw) return '/placeholder-book.png';
+        if (raw.startsWith('http')) return raw;
+        return `${import.meta.env.VITE_API_URL_IMAGE}/${raw}`;
+    })();
     const isInStock = Number(book?.stock) > 0;
+    const bookId = book?.id || book?._id || '';
 
     return (
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl">
@@ -25,12 +31,22 @@ function BookCard({ book }) {
                     </span>
                 </div>
 
-                <Link
-                    to={`/product/${book?.id || book?._id || ''}`}
-                    className="block w-full rounded-md bg-blue-600 px-3 py-2 text-center text-sm font-medium text-white hover:bg-blue-700"
-                >
-                    Xem thêm
-                </Link>
+                {bookId ? (
+                    <Link
+                        to={`/product/${bookId}`}
+                        className="block w-full rounded-md bg-blue-600 px-3 py-2 text-center text-sm font-medium text-white hover:bg-blue-700"
+                    >
+                        Xem thêm
+                    </Link>
+                ) : (
+                    <button
+                        type="button"
+                        disabled
+                        className="block w-full cursor-not-allowed rounded-md bg-gray-300 px-3 py-2 text-center text-sm font-medium text-gray-600"
+                    >
+                        Không có ID sách
+                    </button>
+                )}
             </div>
         </div>
     );

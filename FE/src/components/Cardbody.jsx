@@ -6,6 +6,9 @@ import ModalBuyBook from '../components/ModalBuyBook';
 import { useState } from 'react';
 
 function CardBody({ data }) {
+    const publishYear = data?.publishYear ?? data?.year ?? data?.publicationYear ?? '';
+    const pages = data?.pages ?? data?.pageCount ?? data?.totalPages ?? '';
+    const covertType = data?.covertType ?? data?.coverType ?? data?.cover_type;
     const [visible, setVisible] = useState(false);
     const [bookData, setBookData] = useState({});
 
@@ -18,9 +21,12 @@ function CardBody({ data }) {
         setVisible(false);
     };
 
-    const imageSrc = data?.image?.startsWith('http')
-        ? data.image
-        : `${import.meta.env.VITE_API_URL_IMAGE}/${data?.image || ''}`;
+    const imageSrc = (() => {
+        const raw = String(data?.image || '').trim();
+        if (!raw) return '/placeholder-book.png';
+        if (raw.startsWith('http')) return raw;
+        return `${import.meta.env.VITE_API_URL_IMAGE}/${raw}`;
+    })();
 
     return (
         <div className="h-full bg-gradient-to-br from-white to-blue-50/30 rounded-xl shadow-sm border border-gray-100 hover:shadow-xl hover:border-blue-300 hover:from-blue-50/50 hover:to-purple-50/30 transition-all duration-300 overflow-hidden group relative">
@@ -32,7 +38,7 @@ function CardBody({ data }) {
                         className="w-full h-56 object-cover group-hover:scale-105 transition-transform duration-300"
                         alt={data.nameProduct}
                         onError={(e) => {
-                            e.currentTarget.src = '/placeholder-avatar.png';
+                            e.currentTarget.src = '/placeholder-book.png';
                         }}
                     />
                     <div className="absolute top-3 right-3">
@@ -49,12 +55,12 @@ function CardBody({ data }) {
                     <div className="absolute top-3 left-3">
                         <span
                             className={`px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg backdrop-blur-sm ${
-                                data.covertType === 'hard'
+                                covertType === 'hard'
                                     ? 'bg-gradient-to-r from-blue-400 to-indigo-500 text-white border border-blue-300/50'
                                     : 'bg-gradient-to-r from-orange-400 to-amber-500 text-white border border-orange-300/50'
                             }`}
                         >
-                            {data.covertType === 'hard' ? '📘 Bìa cứng' : '📙 Bìa mềm'}
+                            {covertType === 'hard' ? '📘 Bìa cứng' : '📙 Bìa mềm'}
                         </span>
                     </div>
                 </div>
@@ -83,11 +89,15 @@ function CardBody({ data }) {
                     <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center bg-gradient-to-r from-green-50 to-emerald-50 px-2 py-1.5 rounded-lg border border-green-100/50">
                             <FontAwesomeIcon icon={faBookOpen} className="mr-1 w-3 text-green-500" />
-                            <span className="text-gray-600 font-medium">{data.pages} trang</span>
+                            <span className="text-gray-600 font-medium">
+                                {Number.isFinite(Number(pages)) ? `${Number(pages)} trang` : '-'}
+                            </span>
                         </div>
                         <div className="flex items-center bg-gradient-to-r from-orange-50 to-amber-50 px-2 py-1.5 rounded-lg border border-orange-100/50">
                             <FontAwesomeIcon icon={faCalendar} className="mr-1 w-3 text-orange-500" />
-                            <span className="text-gray-600 font-medium">{data.publishYear}</span>
+                            <span className="text-gray-600 font-medium">
+                                {Number.isFinite(Number(publishYear)) ? String(publishYear) : '-'}
+                            </span>
                         </div>
                     </div>
 

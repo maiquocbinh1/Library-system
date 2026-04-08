@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { Button, Form, Input, Card, Divider, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import Header from '../components/Header';
-import Footer from '../components/Footer';
 import { Link, useNavigate } from 'react-router-dom';
 import { requestLogin } from '../config/request';
-import imagesLogin from '../assets/images/login.jpg';
+import imagesLogin from '../assets/images/login-library.png';
 import { useStore } from '../hooks/useStore';
 
 function LoginUser() {
@@ -41,8 +40,8 @@ function LoginUser() {
                         <div className="hidden lg:flex lg:w-1/2 h-auto">
                             <div className="relative w-full h-full">
                                 <img
-                                    src={`${import.meta.env.VITE_API_URL_IMAGE}/${imagesLogin}`}
-                                    alt="Tour du lịch"
+                                    src={imagesLogin}
+                                    alt="Library login"
                                     className="rounded-l-xl shadow-lg object-cover w-full h-full"
                                 />
                                 <div className="absolute inset-0 bg-blue-500 opacity-20 rounded-l-xl"></div>
@@ -119,10 +118,6 @@ function LoginUser() {
                     </div>
                 </div>
             </main>
-
-            <footer>
-                <Footer />
-            </footer>
 
             <style>{`
                 .shadow-text {

@@ -11,6 +11,7 @@ import {
     DownOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 
 import Statistics from './DashbroadComponents/Statistics';
 import BookManagement from './DashbroadComponents/BookManagement';
@@ -146,7 +147,17 @@ function Admin() {
 
                 <Content className="m-6">
                     <div className="min-h-[calc(100vh-112px)] rounded-2xl bg-white p-6 shadow-sm">
-                        {components[selectedKey] || components['card-codes']}
+                        <AnimatePresence mode="wait" initial={false}>
+                            <motion.div
+                                key={selectedKey}
+                                initial={{ opacity: 0, y: 10, filter: 'blur(2px)' }}
+                                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                                exit={{ opacity: 0, y: -8, filter: 'blur(2px)' }}
+                                transition={{ type: 'tween', ease: [0.22, 1, 0.36, 1], duration: 0.22 }}
+                            >
+                                {components[selectedKey] || components['card-codes']}
+                            </motion.div>
+                        </AnimatePresence>
                     </div>
                 </Content>
             </Layout>
