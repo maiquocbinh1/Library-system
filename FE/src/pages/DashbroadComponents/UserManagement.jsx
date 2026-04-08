@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Table, Button, Input, Modal, Form, Select, message } from 'antd';
+import { Table, Button, Input, Modal, Form, Select, message, Space } from 'antd';
 import { IdcardOutlined } from '@ant-design/icons';
-import { requestDeleteUser, requestGetAllUsers, requestIssueReaderCard, requestUpdateUserAdmin } from '../../config/request';
+import { requestDeleteUser, requestGetAllUsers, requestIssueReaderCard, requestUpdatePassword, requestUpdateUserAdmin } from '../../config/request';
 
 const { Search } = Input;
 
@@ -23,49 +23,59 @@ const UserManagement = () => {
         { title: 'Email', dataIndex: 'email', key: 'email' },
         { title: 'Vai trò', dataIndex: 'role', key: 'role' },
         {
-            title: 'Hành động',
+            // Align header above the "Cấp thẻ" button (not the right-most "Xóa")
+            title: (
+                <div className="w-full text-right" style={{ paddingRight: 37 }}>
+                    Hành động
+                </div>
+            ),
             key: 'action',
+            align: 'right',
+            onHeaderCell: () => ({ style: { textAlign: 'right', paddingRight: 37 } }),
             render: (text, record) => (
-                <span>
-                    <Button
-                        type="primary"
-                        onClick={() => {
-                            setEditingUser(record);
-                            form.setFieldsValue(record);
-                            setIsEditModalVisible(true);
-                        }}
-                    >
-                        Sửa
-                    </Button>
-                    <Button
-                        icon={<IdcardOutlined />}
-                        onClick={() => {
-                            setSelectedUserForCard(record);
-                            cardForm.setFieldsValue({
-                                fullName: record.fullName,
-                                email: record.email,
-                                planMonths: 3,
-                                readerCode: '',
-                            });
-                            setIsCardModalVisible(true);
-                        }}
-                        style={{ marginLeft: 8 }}
-                        className="rounded-xl"
-                    >
-                        Cấp thẻ
-                    </Button>
-                    <Button
-                        type="primary"
-                        danger
-                        onClick={() => {
-                            setDeletingUser(record);
-                            setIsDeleteModalVisible(true);
-                        }}
-                        style={{ marginLeft: 8 }}
-                    >
-                        Xóa
-                    </Button>
-                </span>
+                <div className="flex w-full justify-end">
+                    <Space size={8} wrap={false}>
+                        <Button
+                            type="primary"
+                            size="small"
+                            onClick={() => {
+                                setEditingUser(record);
+                                form.setFieldsValue(record);
+                                setIsEditModalVisible(true);
+                            }}
+                        >
+                            Sửa
+                        </Button>
+                        <Button
+                            icon={<IdcardOutlined />}
+                            size="small"
+                            onClick={() => {
+                                setSelectedUserForCard(record);
+                                cardForm.setFieldsValue({
+                                    fullName: record.fullName,
+                                    email: record.email,
+                                    planMonths: 3,
+                                    readerCode: '',
+                                });
+                                setIsCardModalVisible(true);
+                            }}
+                            className="rounded-xl"
+                        >
+                            Cấp thẻ
+                        </Button>
+                        <Button
+                            type="primary"
+                            danger
+                            size="small"
+                            onClick={() => {
+                                setDeletingUser(record);
+                                setIsDeleteModalVisible(true);
+                            }}
+                        >
+                            Xóa
+                        </Button>
+                    </Space>
+                </div>
             ),
         },
     ];
@@ -91,8 +101,13 @@ const UserManagement = () => {
                 userId: editingUser.id,
                 ...form.getFieldsValue(),
             };
-            await requestUpdateUserAdmin(data);
+            const { password, ...rest } = data;
+            await requestUpdateUserAdmin(rest);
+            if (password && String(password).trim()) {
+                await requestUpdatePassword({ userId: editingUser.id, password: String(password).trim() });
+            }
             setIsEditModalVisible(false);
+            form.resetFields();
             fetchData();
         } catch (error) {
             message.error(error?.response?.data?.message || 'Không thể cập nhật người dùng');
@@ -170,6 +185,16 @@ const UserManagement = () => {
                     </Form.Item>
                     <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Vui lòng nhập email!' }]}>
                         <Input className="rounded-xl" />
+                    </Form.Item>
+                    <Form.Item
+                        name="password"
+                        label="Mật khẩu"
+                        rules={[
+                            { min: 6, message: 'Mật khẩu tối thiểu 6 ký tự' },
+                        ]}
+                        tooltip="Để trống nếu không đổi mật khẩu"
+                    >
+                        <Input.Password className="rounded-xl" placeholder="Nhập mật khẩu mới (nếu muốn đổi)" />
                     </Form.Item>
                     <Form.Item
                         name="role"

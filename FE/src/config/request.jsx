@@ -88,6 +88,11 @@ export const requestDeleteUser = async (data) => {
     return res.data;
 };
 
+export const requestUpdatePassword = async (data) => {
+    const res = await apiClient.post(`${apiUser}/update-password`, data);
+    return res.data;
+};
+
 export const requestGetRequestLoan = async () => {
     const res = await apiClient.get(`${apiUser}/get-request-loan`);
     return res.data;
@@ -104,6 +109,11 @@ export const requestConfirmReaderCode = async (data) => {
 
 export const requestIssueReaderCard = async (data) => {
     const res = await apiClient.post(`${apiUser}/issue-reader-card`, data);
+    return res.data;
+};
+
+export const requestAdminCreateReader = async (data) => {
+    const res = await apiClient.post(`${apiUser}/admin-create-reader`, data);
     return res.data;
 };
 

@@ -129,6 +129,36 @@ function toSafeUser(user) {
 }
 
 class controllerUser {
+    async adminCreateReader(req, res) {
+        const { fullName, phone, address, email } = req.body;
+        if (!fullName || !phone || !email) {
+            throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
+        }
+
+        const existed = await UserMongo.findOne({ email });
+        if (existed) {
+            throw new BadRequestError('Email đã tồn tại');
+        }
+
+        // Create without changing current admin session cookies
+        const passwordPlain = random36() + random36();
+        const passwordHash = bcrypt.hashSync(passwordPlain, bcrypt.genSaltSync(10));
+        const dataUser = await UserMongo.create({
+            mysqlId: random36(),
+            fullName,
+            phone,
+            address: address || '',
+            email,
+            password: passwordHash,
+            typeLogin: 'email',
+            role: 'user',
+        });
+
+        const userId = String(dataUser._id);
+        await createApiKey(userId);
+
+        new OK({ message: 'Tạo độc giả thành công', metadata: { id: userId, user: toSafeUser(dataUser) } }).send(res);
+    }
     async registerUser(req, res) {
         const { fullName, phone, address, email, password } = req.body;
         if (!fullName || !phone || !email || !password) {
@@ -201,7 +231,8 @@ class controllerUser {
             throw new AuthFailureError('Tài khoản không tồn tại');
         }
 
-        const auth = CryptoJS.AES.encrypt(JSON.stringify(user.toObject()), process.env.SECRET_CRYPTO).toString();
+        // Never expose password hash (or other sensitive fields) to frontend
+        const auth = CryptoJS.AES.encrypt(JSON.stringify(toSafeUser(user)), process.env.SECRET_CRYPTO).toString();
         new OK({ message: 'success', metadata: auth }).send(res);
     }
 
@@ -355,8 +386,22 @@ class controllerUser {
     }
 
     async getUsers(req, res) {
-        const users = await UserMongo.find().sort({ createdAt: -1 });
-        new OK({ message: 'Lấy danh sách người dùng thành công', metadata: users }).send(res);
+        const users = await UserMongo.find({}, { password: 0 }).sort({ createdAt: -1 }).lean();
+
+        const userIds = users.map((u) => String(u?._id)).filter(Boolean);
+        const cards = await ReaderCodeMongo.find({ userId: { $in: userIds } }).lean();
+        const cardByUserId = new Map(cards.map((c) => [String(c.userId), c]));
+
+        const enriched = users.map((u) => {
+            const userId = String(u?._id);
+            return {
+                ...u,
+                id: userId,
+                readerCard: cardByUserId.get(userId) || null,
+            };
+        });
+
+        new OK({ message: 'Lấy danh sách người dùng thành công', metadata: enriched }).send(res);
     }
 
     async updateUser(req, res) {
@@ -513,7 +558,7 @@ class controllerUser {
     }
 
     async issueReaderCard(req, res) {
-        const { userId, planMonths, readerCode } = req.body;
+        const { userId, planMonths, readerCode, birthDate, className, gender, roleType, systemType, issuedAt } = req.body;
         const months = Number(planMonths);
         if (!userId || !Number.isFinite(months) || ![3, 6, 12].includes(months)) {
             throw new BadRequestError('Gói thẻ không hợp lệ');
@@ -539,7 +584,16 @@ class controllerUser {
         }
 
         const now = new Date();
-        const expiresAt = dayjs(now).add(months, 'month').toDate();
+        const baseIssuedAt = issuedAt ? dayjs(issuedAt) : dayjs(now);
+        if (!baseIssuedAt.isValid()) {
+            throw new BadRequestError('Ngày làm thẻ không hợp lệ');
+        }
+        const expiresAt = baseIssuedAt.add(months, 'month').toDate();
+        const issuedAtDate = baseIssuedAt.toDate();
+        const birthDateDate = birthDate ? dayjs(birthDate) : null;
+        if (birthDate && !birthDateDate?.isValid?.()) {
+            throw new BadRequestError('Ngày sinh không hợp lệ');
+        }
 
         await ReaderCodeMongo.findOneAndUpdate(
             { userId: userObjectId },
@@ -550,6 +604,12 @@ class controllerUser {
                     approvedAt: now,
                     planMonths: months,
                     expiresAt,
+                    issuedAt: issuedAtDate,
+                    birthDate: birthDate ? birthDateDate.toDate() : null,
+                    className: className ? String(className).trim() : null,
+                    gender: gender ? String(gender) : null,
+                    roleType: roleType ? String(roleType) : null,
+                    systemType: systemType ? String(systemType) : null,
                 },
                 $setOnInsert: {
                     mysqlId: random36(),

@@ -17,6 +17,7 @@ import BookManagement from './DashbroadComponents/BookManagement';
 import UserManagement from './DashbroadComponents/UserManagement';
 import LoanRequestManagement from './DashbroadComponents/LoanRequestManagement';
 import CardIssuanceManagement from './DashbroadComponents/CardIssuanceManagement';
+import ReaderCodeManagement from './DashbroadComponents/ReaderCodeManagement';
 import { requestLogout } from '../config/request';
 import { useStore } from '../hooks/useStore';
 
@@ -27,7 +28,8 @@ const components = {
     stats: <Statistics />,
     user: <UserManagement />,
     loan: <LoanRequestManagement />,
-    card: <CardIssuanceManagement />,
+    'card-codes': <ReaderCodeManagement />,
+    'card-issue': <CardIssuanceManagement />,
     book: <BookManagement />,
 };
 
@@ -35,9 +37,28 @@ const menuItems = [
     { key: 'stats', icon: <DashboardOutlined />, label: 'Dashboard' },
     { key: 'book', icon: <BookOutlined />, label: 'Quản lý sách' },
     { key: 'loan', icon: <HistoryOutlined />, label: 'Yêu cầu mượn sách' },
-    { key: 'card', icon: <IdcardOutlined />, label: 'Quản lý mã độc giả' },
+    {
+        key: 'cardGroup',
+        icon: <IdcardOutlined />,
+        label: 'Quản lý mã độc giả',
+        children: [
+            { key: 'card-codes', label: 'Danh sách mã độc giả' },
+            { key: 'card-issue', label: 'Đăng ký làm thẻ' },
+        ],
+    },
     { key: 'user', icon: <TeamOutlined />, label: 'Quản lý người dùng' },
 ];
+
+function findMenuLabel(items, key) {
+    for (const item of items) {
+        if (item?.key === key) return item?.label;
+        if (Array.isArray(item?.children)) {
+            const found = findMenuLabel(item.children, key);
+            if (found) return found;
+        }
+    }
+    return null;
+}
 
 function Admin() {
     const [selectedKey, setSelectedKey] = useState('stats');
@@ -45,8 +66,7 @@ function Admin() {
     const { dataUser, refreshAuth } = useStore();
 
     const currentTabTitle = useMemo(() => {
-        const currentItem = menuItems.find((item) => item.key === selectedKey);
-        return currentItem?.label || 'Dashboard';
+        return findMenuLabel(menuItems, selectedKey) || 'Dashboard';
     }, [selectedKey]);
 
     const handleLogout = async () => {
@@ -97,6 +117,7 @@ function Admin() {
                     mode="inline"
                     items={menuItems}
                     selectedKeys={[selectedKey]}
+                    defaultOpenKeys={['cardGroup']}
                     onClick={(event) => setSelectedKey(event.key)}
                     className="admin-sider-menu border-e-0 px-2"
                 />
@@ -124,7 +145,9 @@ function Admin() {
                 </Header>
 
                 <Content className="m-6">
-                    <div className="min-h-[calc(100vh-112px)] rounded-2xl bg-white p-6 shadow-sm">{components[selectedKey]}</div>
+                    <div className="min-h-[calc(100vh-112px)] rounded-2xl bg-white p-6 shadow-sm">
+                        {components[selectedKey] || components['card-codes']}
+                    </div>
                 </Content>
             </Layout>
 
