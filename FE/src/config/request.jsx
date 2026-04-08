@@ -102,6 +102,11 @@ export const requestConfirmReaderCode = async (data) => {
     return requestConfirmIdStudent(data);
 };
 
+export const requestIssueReaderCard = async (data) => {
+    const res = await apiClient.post(`${apiUser}/issue-reader-card`, data);
+    return res.data;
+};
+
 export const requestStatistics = async () => {
     const res = await apiClient.get(`${apiUser}/statistics`);
     return res.data;
@@ -140,6 +145,11 @@ export const requestUpdateProduct = async (id, data) => {
 
 export const requestDeleteProduct = async (id) => {
     const res = await apiClient.post(`${apiProduct}/delete`, { id });
+    return res.data;
+};
+
+export const requestSyncBookCodes = async () => {
+    const res = await apiClient.get(`${apiProduct}/sync-book-codes`);
     return res.data;
 };
 

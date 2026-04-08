@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Table, Button, Input, Modal, Form, InputNumber, Select, Upload, Popconfirm, Typography, Card, Row, Col, message } from 'antd';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Table, Button, Input, Modal, Form, InputNumber, Select, Upload, Popconfirm, Typography, Card, Row, Col, message, Tag } from 'antd';
 import { UploadOutlined, PlusOutlined, DeleteOutlined, SaveOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
     requestCreateProduct,
     requestDeleteProduct,
     requestGetAllProduct,
+    requestSyncBookCodes,
     requestUpdateProduct,
     requestUploadImageProduct,
 } from '../../config/request';
@@ -13,6 +14,23 @@ const { Search } = Input;
 const { Text } = Typography;
 
 const CATEGORY_FALLBACK = ['Technology', 'Self-Help', "Children's Books", 'Psychology', 'Computing', 'Literature', 'Educational', 'Cookbooks'];
+
+function getBookId(record) {
+    if (!record) return '';
+    return String(record._id || record.id || record.mysqlId || '').trim();
+}
+
+function nextBoCodeFromList(list) {
+    let maxNum = 0;
+    for (const item of list || []) {
+        const s = String(item?.bookCode || '').trim();
+        const m = /^BO-(\d+)$/i.exec(s) || /^B(\d+)$/i.exec(s);
+        if (!m) continue;
+        const n = Number.parseInt(m[1], 10);
+        if (Number.isFinite(n) && n > maxNum) maxNum = n;
+    }
+    return `BO-${String(maxNum + 1).padStart(3, '0')}`;
+}
 
 const BookManagement = () => {
     const [data, setData] = useState([]);
@@ -29,6 +47,10 @@ const BookManagement = () => {
 
     const [addForm] = Form.useForm();
     const [detailForm] = Form.useForm();
+    const autoSaveTimerRef = useRef(null);
+    const autoSaveInFlightRef = useRef(false);
+    const autoSaveHydratingRef = useRef(false);
+    const pendingPatchRef = useRef({});
 
     const fetchData = async () => {
         try {
@@ -41,7 +63,8 @@ const BookManagement = () => {
                 [];
             const normalized = list.map((item) => ({
                 ...item,
-                id: item?.id || item?.mysqlId || (item?._id ? String(item._id) : undefined),
+                // Luôn ưu tiên Mongo _id để update/delete ổn định
+                id: item?._id ? String(item._id) : String(item?.id || item?.mysqlId || ''),
             }));
             // Mở tab Console trên trình duyệt và kiểm tra normalized.length.
             // Nếu length = 158 thì Ant Design Table sẽ tự động phân trang toàn bộ dữ liệu.
@@ -63,7 +86,7 @@ const BookManagement = () => {
         const uniqueCategories = [
             ...new Set(
                 data
-                    .map((item) => String(item?.category || '').trim())
+                    .map((item) => String(item?.category_1 || item?.category || '').trim())
                     .filter(Boolean),
             ),
         ];
@@ -72,6 +95,7 @@ const BookManagement = () => {
 
     useEffect(() => {
         if (!selectedBook) {
+            autoSaveHydratingRef.current = true;
             detailForm.resetFields();
             detailForm.setFieldsValue({
                 bookCode: '',
@@ -81,17 +105,26 @@ const BookManagement = () => {
                 stock: undefined,
                 description: '',
             });
+            pendingPatchRef.current = {};
+            setTimeout(() => {
+                autoSaveHydratingRef.current = false;
+            }, 0);
             return;
         }
 
+        autoSaveHydratingRef.current = true;
         detailForm.setFieldsValue({
             bookCode: selectedBook.bookCode || '',
             nameProduct: selectedBook.nameProduct || '',
             publisher: selectedBook.publisher || '',
-            category: selectedBook.category || categoryOptions[0],
+            category: selectedBook.category_1 || selectedBook.category || categoryOptions[0],
             stock: Number(selectedBook.stock || 0),
             description: selectedBook.description || '',
         });
+        pendingPatchRef.current = {};
+        setTimeout(() => {
+            autoSaveHydratingRef.current = false;
+        }, 0);
     }, [selectedBook, detailForm, categoryOptions]);
 
     const showAddModal = () => {
@@ -144,7 +177,8 @@ const BookManagement = () => {
     };
 
     const onUpdateFromDetail = async () => {
-        if (!selectedBook?.id) {
+        const targetId = getBookId(selectedBook);
+        if (!targetId) {
             message.warning('Vui lòng chọn một cuốn sách từ bảng để chỉnh sửa');
             return;
         }
@@ -156,7 +190,7 @@ const BookManagement = () => {
                 ...values,
                 image: selectedBook.image,
             };
-            await requestUpdateProduct(selectedBook.id, updateData);
+            await requestUpdateProduct(targetId, updateData);
             message.success('Cập nhật sách thành công');
             fetchData();
         } catch (error) {
@@ -168,11 +202,62 @@ const BookManagement = () => {
         }
     };
 
+    const applyLocalBookPatch = (targetId, patch) => {
+        if (!targetId) return;
+        const normalizedPatch = { ...patch };
+        if (normalizedPatch.category !== undefined && normalizedPatch.category_1 === undefined) {
+            normalizedPatch.category_1 = normalizedPatch.category;
+        }
+        setSelectedBook((prev) => (prev && String(getBookId(prev)) === String(targetId) ? { ...prev, ...patch } : prev));
+        setData((prev) =>
+            Array.isArray(prev)
+                ? prev.map((item) => (String(getBookId(item)) === String(targetId) ? { ...item, ...normalizedPatch } : item))
+                : prev,
+        );
+    };
+
+    const scheduleAutoSavePatch = (incomingPatch) => {
+        const targetId = getBookId(selectedBook);
+        if (!targetId) return;
+
+        const patch = { ...incomingPatch };
+        // Đồng bộ theo backend: dùng category_1
+        if (patch.category !== undefined && patch.category_1 === undefined) {
+            patch.category_1 = patch.category;
+        }
+
+        pendingPatchRef.current = {
+            ...pendingPatchRef.current,
+            ...patch,
+        };
+
+        if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+        }
+
+        autoSaveTimerRef.current = setTimeout(async () => {
+            if (autoSaveInFlightRef.current) return;
+            const payload = pendingPatchRef.current || {};
+            if (!payload || Object.keys(payload).length === 0) return;
+            autoSaveInFlightRef.current = true;
+            try {
+                await requestUpdateProduct(targetId, payload);
+                applyLocalBookPatch(targetId, payload);
+                pendingPatchRef.current = {};
+            } catch (error) {
+                message.error(error?.response?.data?.message || 'Không thể tự động lưu thay đổi');
+            } finally {
+                autoSaveInFlightRef.current = false;
+            }
+        }, 600);
+    };
+
     const handleDeleteBook = async () => {
-        if (!selectedBook?.id) return;
+        const targetId = getBookId(selectedBook);
+        if (!targetId) return;
         try {
             setLoading(true);
-            await requestDeleteProduct(selectedBook.id);
+            await requestDeleteProduct(targetId);
             message.success('Xóa sách thành công');
             setSelectedBook(null);
             detailForm.resetFields();
@@ -193,8 +278,23 @@ const BookManagement = () => {
         message.success('Đã làm mới dữ liệu');
     };
 
+    const handleSyncBookCodes = async () => {
+        try {
+            setLoading(true);
+            const res = await requestSyncBookCodes();
+            const updatedCount = res?.metadata?.updatedCount ?? res?.data?.metadata?.updatedCount;
+            message.success(`Đã cấp mã sách cho ${updatedCount ?? 0} sách`);
+            await fetchData();
+        } catch (error) {
+            message.error(error?.response?.data?.message || 'Không thể đồng bộ mã sách');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleUpdateBookImage = async ({ file, onSuccess, onError }) => {
-        if (!selectedBook?.id) {
+        const targetId = getBookId(selectedBook);
+        if (!targetId) {
             message.warning('Vui lòng chọn một cuốn sách trước khi cập nhật ảnh');
             onError?.(new Error('No selected book'));
             return;
@@ -207,9 +307,13 @@ const BookManagement = () => {
             const uploadRes = await requestUploadImageProduct(formData);
             const imageUrl = uploadRes?.metadata;
 
-            await requestUpdateProduct(selectedBook.id, { image: imageUrl });
+            await requestUpdateProduct(targetId, { image: imageUrl });
             setSelectedBook((prev) => (prev ? { ...prev, image: imageUrl } : prev));
-            await fetchData();
+            setData((prev) =>
+                Array.isArray(prev)
+                    ? prev.map((item) => (String(getBookId(item)) === String(targetId) ? { ...item, image: imageUrl } : item))
+                    : prev,
+            );
             message.success('Cập nhật ảnh sách thành công');
             onSuccess?.('ok');
         } catch (error) {
@@ -282,6 +386,21 @@ const BookManagement = () => {
             width: 180,
         },
         {
+            title: 'Thể loại',
+            dataIndex: 'category_1',
+            key: 'category_1',
+            width: 180,
+            render: (value) => {
+                const raw = String(value || '').trim();
+                if (!raw) return <span className="italic text-gray-400">Chưa phân loại</span>;
+                return (
+                    <Tag color="blue" className="max-w-full truncate">
+                        {raw}
+                    </Tag>
+                );
+            },
+        },
+        {
             title: 'Tồn kho',
             dataIndex: 'stock',
             key: 'stock',
@@ -303,9 +422,14 @@ const BookManagement = () => {
     return (
         <div className="flex flex-col gap-4 p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
-                <Button type="primary" icon={<PlusOutlined />} onClick={showAddModal} loading={loading} className="h-10 rounded-xl shadow-sm">
-                    Thêm sách mới
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Button type="primary" icon={<PlusOutlined />} onClick={showAddModal} loading={loading} className="h-10 rounded-xl shadow-sm">
+                        Thêm sách mới
+                    </Button>
+                    <Button onClick={handleSyncBookCodes} loading={loading} className="h-10 rounded-xl shadow-sm">
+                        Cấp mã sách (sách cũ)
+                    </Button>
+                </div>
                 <Search
                     allowClear
                     placeholder="Tìm kiếm tên sách / tác giả / mã sách..."
@@ -335,10 +459,24 @@ const BookManagement = () => {
                     </div>
 
                     <div className="flex-1">
-                        <Form form={detailForm} layout="vertical" size="middle">
+                        <Form
+                            form={detailForm}
+                            layout="vertical"
+                            size="middle"
+                            onValuesChange={(changedValues) => {
+                                if (!selectedBook) return;
+                                if (autoSaveHydratingRef.current) return;
+                                scheduleAutoSavePatch(changedValues);
+                            }}
+                        >
                             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                                 <Form.Item label="Mã sách" name="bookCode">
-                                    <Input disabled placeholder="Chưa cấp mã" className="rounded-xl" />
+                                    <Input
+                                        disabled={!selectedBook}
+                                        placeholder="Ví dụ: B001 hoặc BO-001"
+                                        className="rounded-xl"
+                                        allowClear
+                                    />
                                 </Form.Item>
                                 <Form.Item label="Tên sách" name="nameProduct" rules={[{ required: true, message: 'Vui lòng nhập tên sách!' }]}>
                                     <Input disabled={!selectedBook} className="rounded-xl" />
@@ -463,7 +601,7 @@ const BookManagement = () => {
                                     )}
                                 </div>
                                 <Form.Item
-                                    className="mt-3 mb-0"
+                                    className="mt-3 mb-0 [&_.ant-form-item-control-input-content]:flex [&_.ant-form-item-control-input-content]:justify-center"
                                     name="image"
                                     label="Ảnh bìa"
                                     rules={[{ required: true, message: 'Vui lòng tải lên ảnh bìa!' }]}
@@ -472,13 +610,14 @@ const BookManagement = () => {
                                         name="image"
                                         beforeUpload={() => false}
                                         maxCount={1}
-                                        listType="picture"
+                                        showUploadList={false}
+                                        className="flex justify-center"
                                         onChange={({ fileList }) => {
                                             const file = fileList?.[0]?.originFileObj;
                                             setAddImagePreview(file ? URL.createObjectURL(file) : '');
                                         }}
                                     >
-                                        <Button icon={<UploadOutlined />} className="h-10 w-full rounded-xl shadow-sm">
+                                        <Button icon={<UploadOutlined />} className="h-10 rounded-xl shadow-sm">
                                             Chọn ảnh bìa
                                         </Button>
                                     </Upload>
@@ -499,6 +638,38 @@ const BookManagement = () => {
                                     </Form.Item>
                                 </Col>
                             </Row>
+
+                            <Form.Item
+                                name="bookCode"
+                                label="Mã sách"
+                                extra="Bấm 'Tạo mã BO-STT' để tự sinh (BO-001, BO-002...). Hoặc nhập tay: B001 / BO-001."
+                                rules={[
+                                    {
+                                        validator: (_, value) => {
+                                            const v = String(value || '').trim();
+                                            if (!v) return Promise.resolve();
+                                            if (!/^B\d+$/i.test(v) && !/^BO-\d+$/i.test(v)) {
+                                                return Promise.reject(new Error('Mã sách không hợp lệ'));
+                                            }
+                                            return Promise.resolve();
+                                        },
+                                    },
+                                ]}
+                            >
+                                <Input
+                                    className="rounded-xl"
+                                    placeholder="Ví dụ: BO-001"
+                                    addonAfter={
+                                        <Button
+                                            type="link"
+                                            className="px-0"
+                                            onClick={() => addForm.setFieldsValue({ bookCode: nextBoCodeFromList(data) })}
+                                        >
+                                            Tạo mã BO-STT
+                                        </Button>
+                                    }
+                                />
+                            </Form.Item>
 
                             <Row gutter={16}>
                                 <Col xs={24} md={12}>

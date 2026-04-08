@@ -15,6 +15,7 @@ const ReaderCodeMongo = require('../models/readerCode.mongo.model');
 const ProductMongo = require('../models/product.mongo.model');
 const HistoryBookMongo = require('../models/historyBook.mongo.model');
 const sendMailForgotPassword = require('../utils/sendMailForgotPassword');
+const dayjs = require('dayjs');
 
 require('dotenv').config();
 
@@ -509,6 +510,62 @@ class controllerUser {
         user.idStudent = idStudent;
         await user.save();
         new OK({ message: 'Xác nhận thành công' }).send(res);
+    }
+
+    async issueReaderCard(req, res) {
+        const { userId, planMonths, readerCode } = req.body;
+        const months = Number(planMonths);
+        if (!userId || !Number.isFinite(months) || ![3, 6, 12].includes(months)) {
+            throw new BadRequestError('Gói thẻ không hợp lệ');
+        }
+
+        const user = await findUserByAnyId(userId);
+        if (!user) {
+            throw new BadRequestError('Người dùng không tồn tại');
+        }
+
+        const userObjectId = String(user._id);
+        const code = String(readerCode || '').trim();
+        if (!code) {
+            throw new BadRequestError('Vui lòng nhập mã thẻ');
+        }
+
+        const duplicatedReaderCode = await ReaderCodeMongo.findOne({
+            readerCode: code,
+            userId: { $ne: userObjectId },
+        }).lean();
+        if (duplicatedReaderCode) {
+            throw new BadRequestError('Mã thẻ đã tồn tại');
+        }
+
+        const now = new Date();
+        const expiresAt = dayjs(now).add(months, 'month').toDate();
+
+        await ReaderCodeMongo.findOneAndUpdate(
+            { userId: userObjectId },
+            {
+                $set: {
+                    status: 'approved',
+                    readerCode: code,
+                    approvedAt: now,
+                    planMonths: months,
+                    expiresAt,
+                },
+                $setOnInsert: {
+                    mysqlId: random36(),
+                    requestedAt: now,
+                },
+            },
+            { upsert: true, new: true },
+        );
+
+        user.idStudent = code;
+        await user.save();
+
+        new OK({
+            message: 'Cấp thẻ độc giả thành công',
+            metadata: { userId: userObjectId, readerCode: code, planMonths: months, expiresAt },
+        }).send(res);
     }
 
     async getRequestLoan(req, res) {

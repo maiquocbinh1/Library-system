@@ -8,6 +8,8 @@ const readerCodeMongoSchema = new mongoose.Schema(
         status: { type: String, enum: ['pending', 'approved'], default: 'pending', index: true },
         requestedAt: { type: Date, default: Date.now },
         approvedAt: { type: Date, default: null },
+        planMonths: { type: Number, default: null },
+        expiresAt: { type: Date, default: null, index: true },
     },
     { timestamps: true, collection: 'library_reader_codes' },
 );
