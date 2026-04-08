@@ -38,6 +38,7 @@ router.post('/upload-image', upload.single('image'), authUser, asyncHandler(cont
 router.post('/request-id-student', authUser, asyncHandler(controllerUser.requestIdStudent));
 router.post('/confirm-id-student', authUser, isAdmin, asyncHandler(controllerUser.confirmIdStudent));
 router.post('/issue-reader-card', authUser, isAdmin, asyncHandler(controllerUser.issueReaderCard));
+router.post('/admin-create-reader', authUser, isAdmin, asyncHandler(controllerUser.adminCreateReader));
 router.get('/get-request-loan', authUser, isAdmin, asyncHandler(controllerUser.getRequestLoan));
 router.get('/statistics', authUser, isAdmin, asyncHandler(controllerUser.getStatistics));
 

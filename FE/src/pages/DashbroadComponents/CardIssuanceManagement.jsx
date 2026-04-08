@@ -1,201 +1,196 @@
-import React, { useEffect, useState } from 'react';
-import { Table, Button, Tag, Modal, Form, Input, message } from 'antd';
-import { requestGetAllUsers, requestConfirmReaderCode, requestDeleteUser } from '../../config/request';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Button, Form, Input, message, Select, DatePicker, Radio, Card } from 'antd';
+import dayjs from 'dayjs';
+import { requestAdminCreateReader, requestIssueReaderCard } from '../../config/request';
 
 const CardIssuanceManagement = () => {
-    const [data, setData] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [isCodeModalVisible, setIsCodeModalVisible] = useState(false);
-    const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
-    const [selectedReader, setSelectedReader] = useState(null);
     const [form] = Form.useForm();
 
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            const res = await requestGetAllUsers();
-            const list = Array.isArray(res?.metadata) ? res.metadata : [];
-            const normalized = list
-                .map((item) => ({
-                    ...item,
-                    id: item?.id || item?.mysqlId || (item?._id ? String(item._id) : undefined),
-                    readerCode: item?.readerCode || item?.idStudent || null,
-                }))
-                .filter((item) => item?.role !== 'admin')
-                .filter((item) => item?.readerCode !== null && item?.readerCode !== undefined);
-            setData(normalized);
-        } catch (error) {
-            message.error('Không thể tải danh sách độc giả');
-        } finally {
-            setLoading(false);
-        }
-    };
-
     useEffect(() => {
-        fetchData();
+        const issuedAt = dayjs();
+        form.setFieldsValue({
+            fullName: '',
+            email: '',
+            phone: '',
+            address: '',
+            readerCode: '',
+            planMonths: 3,
+            birthDate: null,
+            className: '',
+            gender: 'male',
+            roleType: 'student',
+            systemType: 'civil',
+            issuedAt,
+            expiresAt: issuedAt.add(3, 'month'),
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const showCodeModal = (reader) => {
-        setSelectedReader(reader);
+    const handleResetForm = () => {
+        const issuedAt = dayjs();
         form.setFieldsValue({
-            readerCode: reader?.readerCode && reader.readerCode !== '0' ? reader.readerCode : undefined,
+            fullName: '',
+            email: '',
+            phone: '',
+            address: '',
+            readerCode: '',
+            planMonths: 3,
+            birthDate: null,
+            className: '',
+            gender: 'male',
+            roleType: 'student',
+            systemType: 'civil',
+            issuedAt,
+            expiresAt: issuedAt.add(3, 'month'),
         });
-        setIsCodeModalVisible(true);
     };
 
-    const handleCodeCancel = () => {
-        setIsCodeModalVisible(false);
-        form.resetFields();
-        setSelectedReader(null);
-    };
+    const handleSubmitForm = () => form.submit();
 
-    const handleCodeOk = () => {
-        form.submit();
-    };
-
-    const onCodeFormFinish = async (values) => {
+    const onCardFormFinish = async (values) => {
         setLoading(true);
         try {
-            if (!selectedReader?.id) {
-                message.error('Không tìm thấy độc giả hợp lệ');
+            const created = await requestAdminCreateReader({
+                fullName: String(values.fullName || '').trim(),
+                email: String(values.email || '').trim(),
+                phone: String(values.phone || '').trim(),
+                address: String(values.address || '').trim(),
+            });
+            const targetUserId = created?.metadata?.id || created?.metadata?.user?.id || created?.metadata?.user?._id;
+
+            if (!targetUserId) {
+                message.error('Không tạo được độc giả');
                 return;
             }
-            const payload = {
-                userId: selectedReader.id,
-                idStudent: values.readerCode,
-                readerCode: values.readerCode,
-            };
-            await requestConfirmReaderCode(payload);
-            const isEdit = selectedReader?.readerCode && selectedReader.readerCode !== '0';
-            message.success(isEdit ? `Đã cập nhật mã độc giả cho ${selectedReader.fullName}` : `Đã cấp mã độc giả cho ${selectedReader.fullName}`);
-            handleCodeCancel();
-            fetchData();
+
+            await requestIssueReaderCard({
+                userId: targetUserId,
+                planMonths: values.planMonths,
+                readerCode: String(values.readerCode || '').trim(),
+                birthDate: values.birthDate ? values.birthDate.toISOString() : null,
+                className: values.className,
+                gender: values.gender,
+                roleType: values.roleType,
+                systemType: values.systemType,
+                issuedAt: values.issuedAt ? values.issuedAt.toISOString() : null,
+            });
+            message.success('Đã đăng ký thẻ độc giả');
+            handleResetForm();
         } catch (error) {
-            message.error('Cấp mã độc giả thất bại');
+            message.error(error?.response?.data?.message || 'Đăng ký thẻ thất bại');
         } finally {
             setLoading(false);
         }
     };
 
-    const showDeleteModal = (reader) => {
-        setSelectedReader(reader);
-        setIsDeleteModalVisible(true);
-    };
-
-    const handleDeleteCancel = () => {
-        setIsDeleteModalVisible(false);
-        setSelectedReader(null);
-    };
-
-    const handleDeleteOk = async () => {
-        setLoading(true);
-        try {
-            if (!selectedReader?.id) {
-                message.error('Không tìm thấy độc giả hợp lệ');
-                return;
-            }
-            await requestDeleteUser({ userId: selectedReader.id });
-            message.success(`Đã xóa độc giả ${selectedReader.fullName}`);
-            handleDeleteCancel();
-            fetchData();
-        } catch (error) {
-            message.error('Xóa độc giả thất bại');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const columns = [
-        {
-            title: 'ID',
-            dataIndex: 'id',
-            key: 'id',
-            render: (text) => <span>{String(text || '').slice(0, 10) || '-'}</span>,
-        },
-        {
-            title: 'Ảnh đại diện',
-            dataIndex: 'avatar',
-            key: 'avatar',
-            render: (text) => (
-                <img
-                    style={{ width: '70px', height: '70px', borderRadius: '50%', objectFit: 'cover' }}
-                    src={text ? `${import.meta.env.VITE_API_URL_IMAGE}/${text}` : '/placeholder-avatar.png'}
-                    alt="avatar"
-                />
-            ),
-        },
-        { title: 'Họ và tên', dataIndex: 'fullName', key: 'fullName' },
-        { title: 'Email', dataIndex: 'email', key: 'email' },
-        { title: 'Số điện thoại', dataIndex: 'phone', key: 'phone' },
-        {
-            title: 'Trạng thái',
-            dataIndex: 'readerCode',
-            key: 'readerCode',
-            render: (readerCode) => (
-                <Tag color={readerCode === '0' ? 'blue' : 'green'}>{readerCode === '0' ? 'Chờ cấp mã' : 'Đã cấp mã'}</Tag>
-            ),
-        },
-        {
-            title: 'Mã độc giả',
-            dataIndex: 'readerCode',
-            key: 'readerCodeDisplay',
-            render: (readerCode) => <span>{readerCode && readerCode !== '0' ? readerCode : '-'}</span>,
-        },
-        {
-            title: 'Hành động',
-            key: 'action',
-            render: (text, record) => (
-                <div className="flex gap-2">
-                    <Button type="primary" onClick={() => showCodeModal(record)}>
-                        {record.readerCode === '0' ? 'Cấp mã' : 'Sửa mã'}
-                    </Button>
-                    <Button type="primary" danger onClick={() => showDeleteModal(record)}>
-                        Xóa độc giả
-                    </Button>
-                </div>
-            ),
-        },
-    ];
+    const planOptions = useMemo(
+        () => [
+            { value: 3, label: 'Gói 3 tháng' },
+            { value: 6, label: 'Gói 6 tháng' },
+            { value: 12, label: 'Gói 1 năm' },
+        ],
+        [],
+    );
 
     return (
         <div>
-            <h2 className="text-2xl mb-4 font-bold">Quản lý cấp mã độc giả</h2>
-            <Table columns={columns} dataSource={data} rowKey={(record) => record.id || record.email} loading={loading} />
+            <h2 className="text-2xl mb-4 font-bold">Đăng ký làm thẻ (Cấp độc giả)</h2>
+            <Card className="mb-4 rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
+                <Form
+                    form={form}
+                    onFinish={onCardFormFinish}
+                    layout="vertical"
+                    initialValues={{
+                        planMonths: 3,
+                        gender: 'male',
+                        roleType: 'student',
+                        systemType: 'civil',
+                        issuedAt: dayjs(),
+                        expiresAt: dayjs().add(3, 'month'),
+                    }}
+                    onValuesChange={(changed, all) => {
+                        if (changed.planMonths || changed.issuedAt) {
+                            const issuedAt = all.issuedAt || dayjs();
+                            const months = Number(all.planMonths || 3);
+                            form.setFieldsValue({
+                                expiresAt: dayjs(issuedAt).add(months, 'month'),
+                            });
+                        }
+                    }}
+                >
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <Form.Item label="Họ tên" name="fullName" rules={[{ required: true, message: 'Vui lòng nhập họ tên!' }]}>
+                            <Input className="rounded-xl" placeholder="Nguyễn Văn A" />
+                        </Form.Item>
+                        <Form.Item
+                            label="Mã độc giả"
+                            name="readerCode"
+                            rules={[{ required: true, message: 'Vui lòng nhập mã thẻ!' }]}
+                        >
+                            <Input className="rounded-xl" placeholder="Ví dụ: DG0001" />
+                        </Form.Item>
 
-            <Modal
-                title={`${selectedReader?.readerCode && selectedReader?.readerCode !== '0' ? 'Sửa mã độc giả' : 'Cấp mã độc giả'} cho: ${selectedReader?.fullName}`}
-                open={isCodeModalVisible}
-                onOk={handleCodeOk}
-                onCancel={handleCodeCancel}
-                confirmLoading={loading}
-                okText={selectedReader?.readerCode && selectedReader?.readerCode !== '0' ? 'Lưu' : 'Cấp mã'}
-                cancelText="Hủy"
-            >
-                <Form form={form} onFinish={onCodeFormFinish} layout="vertical">
-                    <Form.Item
-                        name="readerCode"
-                        label="Mã độc giả"
-                        rules={[{ required: true, message: 'Vui lòng nhập mã độc giả!' }]}
-                    >
-                        <Input placeholder="Nhập mã độc giả" />
-                    </Form.Item>
+                        <Form.Item label="Gmail" name="email" rules={[{ required: true, message: 'Vui lòng nhập email!' }, { type: 'email', message: 'Email không hợp lệ' }]}>
+                            <Input className="rounded-xl" placeholder="abc@gmail.com" />
+                        </Form.Item>
+                        <Form.Item label="Ngày sinh" name="birthDate">
+                            <DatePicker className="w-full rounded-xl" format="DD/MM/YYYY" />
+                        </Form.Item>
+
+                        <Form.Item label="Điện thoại" name="phone" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại!' }]}>
+                            <Input className="rounded-xl" placeholder="09xxxxxxxx" />
+                        </Form.Item>
+                        <Form.Item label="Lớp" name="className">
+                            <Input className="rounded-xl" placeholder="Ví dụ: D20CQCN01-B" />
+                        </Form.Item>
+
+                        <Form.Item label="Địa chỉ" name="address">
+                            <Input className="rounded-xl" placeholder="(tuỳ chọn)" />
+                        </Form.Item>
+                        <div />
+
+                        <Form.Item label="Giới tính" name="gender">
+                            <Radio.Group>
+                                <Radio value="male">Nam</Radio>
+                                <Radio value="female">Nữ</Radio>
+                            </Radio.Group>
+                        </Form.Item>
+                        <Form.Item label="Chức vụ" name="roleType">
+                            <Radio.Group>
+                                <Radio value="student">Sinh viên</Radio>
+                                <Radio value="lecturer">Học viên</Radio>
+                            </Radio.Group>
+                        </Form.Item>
+
+                        <Form.Item label="Hệ" name="systemType">
+                            <Radio.Group>
+                                <Radio value="civil">Dân sự</Radio>
+                                <Radio value="military">Quốc tế</Radio>
+                            </Radio.Group>
+                        </Form.Item>
+                        <Form.Item label="Loại thẻ / Thời hạn" name="planMonths" rules={[{ required: true, message: 'Vui lòng chọn gói thẻ!' }]}>
+                            <Select className="rounded-xl" options={planOptions} />
+                        </Form.Item>
+
+                        <Form.Item label="Ngày làm thẻ" name="issuedAt" rules={[{ required: true, message: 'Vui lòng chọn ngày làm thẻ!' }]}>
+                            <DatePicker className="w-full rounded-xl" format="DD/MM/YYYY" />
+                        </Form.Item>
+                        <Form.Item label="Ngày hết hạn thẻ" name="expiresAt">
+                            <DatePicker className="w-full rounded-xl" format="DD/MM/YYYY" disabled />
+                        </Form.Item>
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                        <Button onClick={handleResetForm} className="rounded-xl">
+                            Làm lại
+                        </Button>
+                        <Button type="primary" onClick={handleSubmitForm} loading={loading} className="rounded-xl">
+                            Đăng ký
+                        </Button>
+                    </div>
                 </Form>
-            </Modal>
-
-            <Modal
-                title="Xác nhận xóa độc giả"
-                open={isDeleteModalVisible}
-                onOk={handleDeleteOk}
-                onCancel={handleDeleteCancel}
-                confirmLoading={loading}
-                okText="Xóa độc giả"
-                cancelText="Không"
-                okButtonProps={{ danger: true }}
-            >
-                <p>
-                    Bạn có chắc chắn muốn xóa độc giả <b>{selectedReader?.fullName}</b> không?
-                </p>
-            </Modal>
+            </Card>
         </div>
     );
 };
