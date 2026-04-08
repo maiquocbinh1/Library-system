@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import Footer from '../components/Footer';
 import Header from '../components/Header';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { requestGetOneProduct } from '../config/request';
 import { useState } from 'react';
 import { message } from 'antd';
@@ -13,24 +13,52 @@ function DetailProduct() {
     const { id } = useParams();
     const [dataProduct, setDataProduct] = useState({});
     const [visible, setVisible] = useState(false);
+    const navigate = useNavigate();
 
     const { dataUser } = useStore();
-    const productImageSrc = dataProduct?.image?.startsWith('http')
-        ? dataProduct.image
-        : `${import.meta.env.VITE_API_URL_IMAGE}/${dataProduct?.image || ''}`;
+    const productImageSrc = (() => {
+        const raw = String(dataProduct?.image || '').trim();
+        if (!raw) return '/placeholder-book.png';
+        if (raw.startsWith('http')) return raw;
+        return `${import.meta.env.VITE_API_URL_IMAGE}/${raw}`;
+    })();
 
     const normalizeProduct = (product) => {
         if (!product || typeof product !== 'object') return {};
+        const publishYear = product.publishYear ?? product.year ?? product.publicationYear ?? product.publish_year;
+        const pages = product.pages ?? product.pageCount ?? product.totalPages ?? product.page_count;
+        const language = product.language ?? product.lang ?? product.bookLanguage;
+        const publishingCompany = product.publishingCompany ?? product.publishing_company ?? product.releaseCompany;
+        const publisher = product.publisher ?? product.author ?? product.authors;
+        const covertType = product.covertType ?? product.coverType ?? product.cover_type;
+
         return {
             ...product,
             id: product.id || product.mysqlId || (product._id ? String(product._id) : undefined),
+            publishYear,
+            pages,
+            language,
+            publishingCompany,
+            publisher,
+            covertType,
         };
     };
 
     useEffect(() => {
         const fetchData = async () => {
             try {
+                if (!id) {
+                    message.error('Không tìm thấy mã sách hợp lệ');
+                    navigate('/categories');
+                    return;
+                }
                 const res = await requestGetOneProduct(id);
+                if (!res?.metadata) {
+                    setDataProduct(null);
+                    message.error('Sách không tồn tại hoặc đã bị xóa');
+                    navigate('/categories');
+                    return;
+                }
                 const product = normalizeProduct(res?.metadata);
                 setDataProduct(product);
             } catch {
@@ -38,13 +66,12 @@ function DetailProduct() {
             }
         };
         fetchData();
-    }, [id]);
+    }, [id, navigate]);
 
-    const showModal = async () => {
-        setVisible(true);
-    };
+    const showModal = async () => setVisible(true);
 
     if (!dataUser) return <div>loading....</div>;
+    if (dataProduct === null) return null;
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -54,7 +81,7 @@ function DetailProduct() {
                 <nav className="flex items-center space-x-2 text-sm text-gray-500">
                     <Link to={'/'}>Trang chủ</Link>
                     <span>/</span>
-                    <Link to={'/product'}>Sách</Link>
+                    <Link to={'/categories'}>Sách</Link>
                     <span>/</span>
                     <span className="text-gray-700">Chi tiết sách</span>
                 </nav>
@@ -70,7 +97,7 @@ function DetailProduct() {
                                     alt={dataProduct.nameProduct}
                                     className="w-full h-auto rounded-lg shadow-md"
                                     onError={(e) => {
-                                        e.currentTarget.src = '/placeholder-avatar.png';
+                                        e.currentTarget.src = '/placeholder-book.png';
                                     }}
                                 />
                             </div>
@@ -86,12 +113,12 @@ function DetailProduct() {
                                 <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Nhà xuất bản:</span>
-                                        <span className="font-medium text-gray-800">{dataProduct.publisher}</span>
+                                        <span className="font-medium text-gray-800">{String(dataProduct.publisher || '-')}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Công ty phát hành:</span>
                                         <span className="font-medium text-gray-800">
-                                            {dataProduct.publishingCompany}
+                                            {String(dataProduct.publishingCompany || '-')}
                                         </span>
                                     </div>
                                     <div className="flex justify-between">
@@ -102,15 +129,19 @@ function DetailProduct() {
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Số trang:</span>
-                                        <span className="font-medium text-gray-800">{dataProduct.pages} trang</span>
+                                        <span className="font-medium text-gray-800">
+                                            {Number.isFinite(Number(dataProduct.pages)) ? `${Number(dataProduct.pages)} trang` : '-'}
+                                        </span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Ngôn ngữ:</span>
-                                        <span className="font-medium text-gray-800">{dataProduct.language}</span>
+                                        <span className="font-medium text-gray-800">{String(dataProduct.language || '-')}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Năm xuất bản:</span>
-                                        <span className="font-medium text-gray-800">{dataProduct.publishYear}</span>
+                                        <span className="font-medium text-gray-800">
+                                            {Number.isFinite(Number(dataProduct.publishYear)) ? String(dataProduct.publishYear) : '-'}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -136,7 +167,9 @@ function DetailProduct() {
                     <div className="border-t border-gray-200 p-6">
                         <h2 className="text-xl font-bold text-gray-900 mb-4">Mô tả sách</h2>
                         <div className="bg-gray-50 p-4 rounded-lg">
-                            <p className="text-gray-700 leading-relaxed">{dataProduct.description}</p>
+                            <p className="whitespace-pre-wrap text-gray-700 leading-relaxed">
+                                {String(dataProduct.description || '').trim() || 'Chưa có mô tả.'}
+                            </p>
                         </div>
                     </div>
                 </div>

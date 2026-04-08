@@ -6,7 +6,7 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { requestRegister } from '../config/request';
 import { toast } from 'react-toastify';
-import imagesLogin from '../assets/images/login.jpg';
+import imagesLogin from '../assets/images/login-library.png';
 
 function RegisterUser() {
     const [loading, setLoading] = useState(false);
@@ -48,8 +48,8 @@ function RegisterUser() {
                         <div className="hidden lg:flex lg:w-1/2 h-auto">
                             <div className="relative w-full h-full">
                                 <img
-                                    src={`${import.meta.env.VITE_API_URL_IMAGE}/${imagesLogin}`}
-                                    alt="Tour du lịch"
+                                    src={imagesLogin}
+                                    alt="Library login"
                                     className="rounded-l-xl shadow-lg object-cover w-full h-full"
                                 />
                                 <div className="absolute inset-0 bg-blue-500 opacity-20 rounded-l-xl"></div>

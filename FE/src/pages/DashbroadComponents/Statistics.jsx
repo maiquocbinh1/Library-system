@@ -172,6 +172,38 @@ const Statistics = () => {
         });
     }, [books, searchText]);
 
+    const bookStats = useMemo(() => {
+        const totalTitles = books.length;
+        const totalQuantity = books.reduce((sum, b) => sum + Number(b?.stock || 0), 0);
+        const titlesInStock = books.filter((b) => Number(b?.stock || 0) > 0).length;
+        const titlesOutOfStock = books.filter((b) => Number(b?.stock || 0) <= 0).length;
+        const lowStockTitles = books.filter((b) => {
+            const s = Number(b?.stock || 0);
+            return s > 0 && s <= 2;
+        }).length;
+
+        const categorySet = new Set(
+            books
+                .map((b) => String(b?.category_1 || '').trim())
+                .filter((v) => v && v !== '-' && v.toLowerCase() !== 'undefined'),
+        );
+        const authorSet = new Set(
+            books
+                .map((b) => String(b?.publisher || '').trim())
+                .filter((v) => v && v !== '-' && v.toLowerCase() !== 'undefined'),
+        );
+
+        return {
+            totalTitles,
+            totalQuantity,
+            titlesInStock,
+            titlesOutOfStock,
+            lowStockTitles,
+            totalCategories: categorySet.size,
+            totalAuthors: authorSet.size,
+        };
+    }, [books]);
+
     const filteredPendingRequests = useMemo(() => {
         const q = String(pendingSearchText || '').trim().toLowerCase();
         if (!q) return pendingRequests;
@@ -387,17 +419,54 @@ const Statistics = () => {
                 footer={null}
                 width={1200}
             >
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-sm text-slate-600">
-                        Tổng sách trong kho: <b>{books.length}</b>
+                <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-12">
+                    <div className="lg:col-span-8">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                <div className="text-xs font-semibold text-slate-500">Tổng sách trong kho</div>
+                                <div className="mt-1 text-lg font-bold text-slate-900">{bookStats.totalTitles}</div>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                <div className="text-xs font-semibold text-slate-500">Tổng số lượng sách</div>
+                                <div className="mt-1 text-lg font-bold text-slate-900">{bookStats.totalQuantity}</div>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                <div className="text-xs font-semibold text-slate-500">Tổng số sách còn</div>
+                                <div className="mt-1 text-lg font-bold text-slate-900">{bookStats.titlesInStock}</div>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                <div className="text-xs font-semibold text-slate-500">Tổng số sách hết</div>
+                                <div className="mt-1 text-lg font-bold text-slate-900">{bookStats.titlesOutOfStock}</div>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                <div className="text-xs font-semibold text-slate-500">Sách sắp hết (≤ 2)</div>
+                                <div className="mt-1 text-base font-semibold text-slate-900">{bookStats.lowStockTitles}</div>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                <div className="text-xs font-semibold text-slate-500">Tổng thể loại</div>
+                                <div className="mt-1 text-base font-semibold text-slate-900">{bookStats.totalCategories}</div>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                <div className="text-xs font-semibold text-slate-500">Tổng tác giả</div>
+                                <div className="mt-1 text-base font-semibold text-slate-900">{bookStats.totalAuthors}</div>
+                            </div>
+                        </div>
                     </div>
-                    <Input
-                        allowClear
-                        placeholder="Tìm kiếm mã sách / tên sách / tác giả / thể loại..."
-                        value={searchText}
-                        onChange={(e) => setSearchText(e.target.value)}
-                        className="w-96"
-                    />
+
+                    <div className="lg:col-span-4">
+                        <div className="rounded-xl border border-slate-200 bg-white p-3">
+                            <div className="mb-2 text-xs font-semibold text-slate-500">Tìm kiếm</div>
+                            <Input
+                                allowClear
+                                placeholder="Mã sách / tên sách / tác giả / thể loại..."
+                                value={searchText}
+                                onChange={(e) => setSearchText(e.target.value)}
+                            />
+                        </div>
+                    </div>
                 </div>
 
                 <Table
