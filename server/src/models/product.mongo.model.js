@@ -14,6 +14,8 @@ const productMongoSchema = new mongoose.Schema(
         image: { type: String, required: true },
         nameProduct: { type: String, required: true },
         category: { type: String, default: null, trim: true },
+        // Dữ liệu thực tế hiện đang lưu theo cột category_1 trong MongoDB
+        category_1: { type: String, default: null, trim: true },
         description: { type: String, default: '' },
         stock: { type: Number, required: true },
         covertType: {

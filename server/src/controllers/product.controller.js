@@ -9,6 +9,19 @@ function random36() {
     return crypto.randomUUID();
 }
 
+function normalizeBookCode(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+
+    const bo = /^BO-(\d+)$/i.exec(s);
+    if (bo) return `BO-${String(bo[1]).padStart(3, '0')}`;
+
+    const b = /^B(\d+)$/i.exec(s);
+    if (b) return `B${String(b[1]).padStart(3, '0')}`;
+
+    return null;
+}
+
 async function generateUniqueBookCode() {
     // Lấy mã lớn nhất hiện tại để sinh mã kế tiếp theo chuẩn B001, B002...
     const latestBook = await ProductMongo.findOne({
@@ -81,7 +94,11 @@ class controllerProduct {
             publisher,
             publishingCompany,
             category,
+            category_1,
+            bookCode: bookCodeInput,
         } = req.body;
+
+        const resolvedCategory1 = String(category_1 || category || '').trim();
 
         if (
             !nameProduct ||
@@ -94,18 +111,29 @@ class controllerProduct {
             !language ||
             !publisher ||
             !publishingCompany ||
-            !category
+            !resolvedCategory1
         ) {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
 
-        const bookCode = await generateUniqueBookCode();
+        let bookCode = '';
+        const trimmed = String(bookCodeInput || '').trim();
+        if (trimmed) {
+            const normalized = normalizeBookCode(trimmed);
+            if (!normalized) throw new BadRequestError('Mã sách không hợp lệ');
+            const existed = await ProductMongo.findOne({ bookCode: normalized }).select('_id').lean();
+            if (existed) throw new BadRequestError('Mã sách đã tồn tại');
+            bookCode = normalized;
+        } else {
+            bookCode = await generateUniqueBookCode();
+        }
         const product = await ProductMongo.create({
             mysqlId: random36(),
             bookCode,
             nameProduct,
             image,
-            category,
+            category: resolvedCategory1,
+            category_1: resolvedCategory1,
             description,
             stock: Number(stock),
             covertType,
@@ -191,8 +219,10 @@ class controllerProduct {
         }
 
         const allowed = [
+            'bookCode',
             'nameProduct',
             'category',
+            'category_1',
             'image',
             'description',
             'stock',
@@ -207,6 +237,30 @@ class controllerProduct {
         for (const key of allowed) {
             if (req.body[key] !== undefined) {
                 product[key] = req.body[key];
+            }
+        }
+
+        if (req.body.bookCode !== undefined) {
+            const trimmed = String(req.body.bookCode || '').trim();
+            if (trimmed) {
+                const normalized = normalizeBookCode(trimmed);
+                if (!normalized) throw new BadRequestError('Mã sách không hợp lệ');
+                const existed = await ProductMongo.findOne({ bookCode: normalized }).select('_id').lean();
+                if (existed && String(existed._id) !== String(product._id)) {
+                    throw new BadRequestError('Mã sách đã tồn tại');
+                }
+                product.bookCode = normalized;
+            } else {
+                product.bookCode = '';
+            }
+        }
+
+        // Đồng bộ category và category_1 để frontend luôn có dữ liệu
+        if (req.body.category_1 !== undefined || req.body.category !== undefined) {
+            const next = String(req.body.category_1 || req.body.category || '').trim();
+            if (next) {
+                product.category = next;
+                product.category_1 = next;
             }
         }
 
