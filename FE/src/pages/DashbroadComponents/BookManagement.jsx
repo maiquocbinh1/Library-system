@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Table, Button, Input, Modal, Form, InputNumber, Select, Upload, Popconfirm, Typography, Card, Row, Col, message } from 'antd';
+import { Table, Button, Input, Modal, Form, InputNumber, Select, Upload, Popconfirm, Typography, Card, Row, Col, message, Tag } from 'antd';
 import { UploadOutlined, PlusOutlined, DeleteOutlined, SaveOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
     requestCreateProduct,
@@ -12,7 +12,18 @@ import {
 const { Search } = Input;
 const { Text } = Typography;
 
-const CATEGORY_FALLBACK = ['Technology', 'Self-Help', "Children's Books", 'Psychology', 'Computing', 'Literature', 'Educational', 'Cookbooks'];
+const STANDARD_CATEGORIES = [
+    'Công nghệ thông tin (CNTT / IT)',
+    'Kinh tế – Kinh doanh',
+    'Giáo dục – Học tập',
+    'Văn học – Tiểu thuyết',
+    'Kỹ năng sống',
+    'Thiếu nhi',
+    'Ngoại ngữ',
+    'Khoa học – Tự nhiên',
+    'Lịch sử – Địa lý',
+    'Tâm lý – Phát triển bản thân',
+];
 
 const BookManagement = () => {
     const [data, setData] = useState([]);
@@ -20,6 +31,8 @@ const BookManagement = () => {
     const [selectedBook, setSelectedBook] = useState(null);
     const [loading, setLoading] = useState(false);
     const [imageUpdating, setImageUpdating] = useState(false);
+    const [pendingImageFile, setPendingImageFile] = useState(null);
+    const [pendingImagePreview, setPendingImagePreview] = useState('');
     const [searchText, setSearchText] = useState('');
     const [addImagePreview, setAddImagePreview] = useState('');
     const [tablePagination, setTablePagination] = useState({
@@ -59,17 +72,6 @@ const BookManagement = () => {
         fetchData();
     }, []);
 
-    const categoryOptions = useMemo(() => {
-        const uniqueCategories = [
-            ...new Set(
-                data
-                    .map((item) => String(item?.category || '').trim())
-                    .filter(Boolean),
-            ),
-        ];
-        return uniqueCategories.length ? uniqueCategories : CATEGORY_FALLBACK;
-    }, [data]);
-
     useEffect(() => {
         if (!selectedBook) {
             detailForm.resetFields();
@@ -81,23 +83,28 @@ const BookManagement = () => {
                 stock: undefined,
                 description: '',
             });
+            setPendingImageFile(null);
+            setPendingImagePreview('');
             return;
         }
 
-        detailForm.setFieldsValue({
+        const cleanedRecord = {
             bookCode: selectedBook.bookCode || '',
             nameProduct: selectedBook.nameProduct || '',
             publisher: selectedBook.publisher || '',
-            category: selectedBook.category || categoryOptions[0],
+            category: selectedBook.category ? String(selectedBook.category).trim() : STANDARD_CATEGORIES[0],
             stock: Number(selectedBook.stock || 0),
             description: selectedBook.description || '',
-        });
-    }, [selectedBook, detailForm, categoryOptions]);
+        };
+        detailForm.setFieldsValue(cleanedRecord);
+        setPendingImageFile(null);
+        setPendingImagePreview('');
+    }, [selectedBook, detailForm]);
 
     const showAddModal = () => {
         setIsAddModalVisible(true);
         addForm.setFieldsValue({
-            category: categoryOptions[0],
+            category: STANDARD_CATEGORIES[0],
             covertType: 'soft',
             language: 'vi',
         });
@@ -130,6 +137,9 @@ const BookManagement = () => {
                 ...values,
                 image: urlImage.metadata,
             };
+            if (String(values.bookCode || '').trim()) {
+                createData.bookCode = String(values.bookCode || '').trim();
+            }
 
             await requestCreateProduct(createData);
             message.success('Thêm sách thành công');
@@ -152,12 +162,23 @@ const BookManagement = () => {
             const values = await detailForm.validateFields();
             setLoading(true);
 
+            let nextImage = selectedBook.image;
+            if (pendingImageFile) {
+                setImageUpdating(true);
+                const formData = new FormData();
+                formData.append('image', pendingImageFile);
+                const uploadRes = await requestUploadImageProduct(formData);
+                nextImage = uploadRes?.metadata || nextImage;
+            }
+
             const updateData = {
                 ...values,
-                image: selectedBook.image,
+                image: nextImage,
             };
             await requestUpdateProduct(selectedBook.id, updateData);
             message.success('Cập nhật sách thành công');
+            setPendingImageFile(null);
+            setPendingImagePreview('');
             fetchData();
         } catch (error) {
             if (error?.errorFields) return;
@@ -165,6 +186,7 @@ const BookManagement = () => {
             message.error(error?.response?.data?.message || 'Không thể cập nhật sách');
         } finally {
             setLoading(false);
+            setImageUpdating(false);
         }
     };
 
@@ -188,36 +210,23 @@ const BookManagement = () => {
     const handleRefreshView = async () => {
         setSelectedBook(null);
         setSearchText('');
+        setPendingImageFile(null);
+        setPendingImagePreview('');
         detailForm.resetFields();
         await fetchData();
         message.success('Đã làm mới dữ liệu');
     };
 
-    const handleUpdateBookImage = async ({ file, onSuccess, onError }) => {
-        if (!selectedBook?.id) {
-            message.warning('Vui lòng chọn một cuốn sách trước khi cập nhật ảnh');
-            onError?.(new Error('No selected book'));
+    // Chỉ preview ảnh; chỉ upload khi bấm "Lưu thay đổi"
+    const handlePickPendingImage = ({ fileList }) => {
+        const file = fileList?.[0]?.originFileObj;
+        if (!file) {
+            setPendingImageFile(null);
+            setPendingImagePreview('');
             return;
         }
-
-        try {
-            setImageUpdating(true);
-            const formData = new FormData();
-            formData.append('image', file);
-            const uploadRes = await requestUploadImageProduct(formData);
-            const imageUrl = uploadRes?.metadata;
-
-            await requestUpdateProduct(selectedBook.id, { image: imageUrl });
-            setSelectedBook((prev) => (prev ? { ...prev, image: imageUrl } : prev));
-            await fetchData();
-            message.success('Cập nhật ảnh sách thành công');
-            onSuccess?.('ok');
-        } catch (error) {
-            message.error(error?.response?.data?.message || 'Không thể cập nhật ảnh sách');
-            onError?.(error);
-        } finally {
-            setImageUpdating(false);
-        }
+        setPendingImageFile(file);
+        setPendingImagePreview(URL.createObjectURL(file));
     };
 
     const filteredData = useMemo(() => {
@@ -282,6 +291,23 @@ const BookManagement = () => {
             width: 180,
         },
         {
+            title: 'Thể loại',
+            dataIndex: 'category',
+            key: 'category',
+            ellipsis: true,
+            width: 180,
+            render: (value) => {
+                const raw = String(value || '').trim();
+                if (!raw) return <span className="text-slate-400">-</span>;
+
+                return (
+                    <Tag color="blue" className="max-w-full truncate">
+                        {raw}
+                    </Tag>
+                );
+            },
+        },
+        {
             title: 'Tồn kho',
             dataIndex: 'stock',
             key: 'stock',
@@ -294,11 +320,13 @@ const BookManagement = () => {
         },
     ];
 
-    const selectedImageSrc = selectedBook?.image
-        ? selectedBook.image.startsWith('http')
-            ? selectedBook.image
-            : `${import.meta.env.VITE_API_URL_IMAGE}/${selectedBook.image}`
-        : null;
+    const selectedImageSrc = pendingImagePreview
+        ? pendingImagePreview
+        : selectedBook?.image
+          ? selectedBook.image.startsWith('http')
+              ? selectedBook.image
+              : `${import.meta.env.VITE_API_URL_IMAGE}/${selectedBook.image}`
+          : null;
 
     return (
         <div className="flex flex-col gap-4 p-3">
@@ -351,7 +379,7 @@ const BookManagement = () => {
                                         placeholder="Chọn thể loại"
                                         disabled={!selectedBook}
                                         className="rounded-xl"
-                                        options={categoryOptions.map((item) => ({ value: item, label: item }))}
+                                        options={STANDARD_CATEGORIES.map((item) => ({ value: item, label: item }))}
                                     />
                                 </Form.Item>
                                 <Form.Item label="Số lượng tồn kho" name="stock" rules={[{ required: true, message: 'Vui lòng nhập số lượng tồn kho!' }]}>
@@ -375,9 +403,11 @@ const BookManagement = () => {
                                 </Button>
                                 <Upload
                                     showUploadList={false}
-                                    customRequest={handleUpdateBookImage}
+                                    beforeUpload={() => false}
                                     disabled={!selectedBook || imageUpdating}
                                     accept="image/*"
+                                    maxCount={1}
+                                    onChange={handlePickPendingImage}
                                 >
                                     <Button className="h-10 rounded-xl shadow-sm" loading={imageUpdating} disabled={!selectedBook}>
                                         <span className="inline-flex items-center justify-center gap-2">
@@ -463,22 +493,22 @@ const BookManagement = () => {
                                     )}
                                 </div>
                                 <Form.Item
-                                    className="mt-3 mb-0"
+                                    className="mt-3 mb-0 [&_.ant-form-item-control-input-content]:flex [&_.ant-form-item-control-input-content]:justify-center"
                                     name="image"
-                                    label="Ảnh bìa"
                                     rules={[{ required: true, message: 'Vui lòng tải lên ảnh bìa!' }]}
                                 >
                                     <Upload
                                         name="image"
                                         beforeUpload={() => false}
                                         maxCount={1}
-                                        listType="picture"
+                                        showUploadList={false}
+                                        className="flex justify-center"
                                         onChange={({ fileList }) => {
                                             const file = fileList?.[0]?.originFileObj;
                                             setAddImagePreview(file ? URL.createObjectURL(file) : '');
                                         }}
                                     >
-                                        <Button icon={<UploadOutlined />} className="h-10 w-full rounded-xl shadow-sm">
+                                        <Button icon={<UploadOutlined />} className="h-10 rounded-xl shadow-sm">
                                             Chọn ảnh bìa
                                         </Button>
                                     </Upload>
@@ -500,10 +530,30 @@ const BookManagement = () => {
                                 </Col>
                             </Row>
 
+                            <Form.Item
+                                name="bookCode"
+                                label="Mã sách"
+                                extra="Để trống để hệ thống tự cấp mã (B001, B002...). Nếu nhập tay: định dạng B + số (ví dụ B001)."
+                                rules={[
+                                    {
+                                        validator: (_, value) => {
+                                            const v = String(value || '').trim();
+                                            if (!v) return Promise.resolve();
+                                            if (!/^B\d+$/i.test(v)) {
+                                                return Promise.reject(new Error('Mã sách không hợp lệ'));
+                                            }
+                                            return Promise.resolve();
+                                        },
+                                    },
+                                ]}
+                            >
+                                <Input className="rounded-xl" placeholder="Ví dụ: B042" allowClear />
+                            </Form.Item>
+
                             <Row gutter={16}>
                                 <Col xs={24} md={12}>
                                     <Form.Item name="category" label="Thể loại" rules={[{ required: true, message: 'Vui lòng chọn thể loại!' }]}>
-                                        <Select className="rounded-xl" options={categoryOptions.map((item) => ({ value: item, label: item }))} />
+                                        <Select className="rounded-xl" options={STANDARD_CATEGORIES.map((item) => ({ value: item, label: item }))} />
                                     </Form.Item>
                                 </Col>
                                 <Col xs={24} md={12}>
