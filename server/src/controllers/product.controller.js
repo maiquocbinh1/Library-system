@@ -9,38 +9,24 @@ function random36() {
     return crypto.randomUUID();
 }
 
-function parseBookCodeSequence(code) {
-    const s = String(code || '').trim();
-    const bo = /^BO-(\d+)$/i.exec(s);
-    if (bo) return Number.parseInt(bo[1], 10);
-    const legacy = /^B(\d+)$/i.exec(s);
-    if (legacy) return Number.parseInt(legacy[1], 10);
-    return null;
-}
-
-function normalizeManualBookCode(raw) {
-    const s = String(raw || '').trim();
-    if (!s) return '';
-    const m = /^B(\d+)$/i.exec(s);
-    if (!m) return null;
-    return `B${String(m[1]).padStart(3, '0')}`;
-}
-
 async function generateUniqueBookCode() {
-    const docs = await ProductMongo.find({
+    // Lấy mã lớn nhất hiện tại để sinh mã kế tiếp theo chuẩn B001, B002...
+    const latestBook = await ProductMongo.findOne({
         bookCode: { $exists: true, $ne: null, $ne: '' },
     })
+        .sort({ bookCode: -1 })
         .select('bookCode')
         .lean();
 
-    let maxNum = 0;
-    for (const d of docs) {
-        const n = parseBookCodeSequence(d.bookCode);
-        if (n !== null && Number.isFinite(n) && n > maxNum) maxNum = n;
+    let nextNumber = 1;
+    if (latestBook?.bookCode) {
+        const numericPart = Number.parseInt(String(latestBook.bookCode).replace(/^B/i, ''), 10);
+        if (Number.isFinite(numericPart)) {
+            nextNumber = numericPart + 1;
+        }
     }
 
-    const nextNumber = maxNum + 1;
-
+    // Tránh trùng mã trong trường hợp dữ liệu cũ không liên tục
     for (let retry = 0; retry < 100; retry += 1) {
         const candidate = `B${String(nextNumber + retry).padStart(3, '0')}`;
         const existed = await ProductMongo.findOne({ bookCode: candidate }).select('_id').lean();
@@ -95,7 +81,6 @@ class controllerProduct {
             publisher,
             publishingCompany,
             category,
-            bookCode: bookCodeInput,
         } = req.body;
 
         if (
@@ -114,21 +99,7 @@ class controllerProduct {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
 
-        let bookCode;
-        const trimmedCode = String(bookCodeInput || '').trim();
-        if (trimmedCode) {
-            const normalized = normalizeManualBookCode(trimmedCode);
-            if (!normalized) {
-                throw new BadRequestError('Mã sách không hợp lệ');
-            }
-            const existed = await ProductMongo.findOne({ bookCode: normalized }).select('_id').lean();
-            if (existed) {
-                throw new BadRequestError('Mã sách đã tồn tại');
-            }
-            bookCode = normalized;
-        } else {
-            bookCode = await generateUniqueBookCode();
-        }
+        const bookCode = await generateUniqueBookCode();
         const product = await ProductMongo.create({
             mysqlId: random36(),
             bookCode,
