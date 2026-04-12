@@ -17,16 +17,18 @@ var upload = multer({ storage: storage });
 
 const { authUser, asyncHandler } = require('../auth/checkAuth');
 const { isAdmin } = require('../middlewares/admin.middleware');
+const { libraryStaff } = require('../middlewares/libraryStaff.middleware');
 
 const controllerBook = require('../controllers/book.controller');
 
-router.post('/upload-image', authUser, isAdmin, upload.single('image'), asyncHandler(controllerBook.uploadImage));
-router.post('/create', authUser, isAdmin, upload.single('image'), asyncHandler(controllerBook.createProduct));
-router.get('/sync-book-codes', authUser, isAdmin, asyncHandler(controllerBook.syncOldBooksCode));
+router.post('/upload-image', authUser, libraryStaff, upload.single('image'), asyncHandler(controllerBook.uploadImage));
+router.post('/create', authUser, libraryStaff, upload.single('image'), asyncHandler(controllerBook.createProduct));
+router.get('/sync-book-codes', authUser, libraryStaff, asyncHandler(controllerBook.syncOldBooksCode));
 router.get('/get-all', asyncHandler(controllerBook.getAllProduct));
 router.get('/get-one', asyncHandler(controllerBook.getOneProduct));
 router.get('/search', asyncHandler(controllerBook.searchProduct));
-router.post('/update', authUser, isAdmin, asyncHandler(controllerBook.updateProduct));
-router.post('/delete', authUser, isAdmin, asyncHandler(controllerBook.deleteProduct));
+router.get('/book-copies', authUser, libraryStaff, asyncHandler(controllerBook.listAllBookCopies));
+router.post('/update', authUser, libraryStaff, asyncHandler(controllerBook.updateProduct));
+router.post('/delete', authUser, libraryStaff, asyncHandler(controllerBook.deleteProduct));
 
 module.exports = router;

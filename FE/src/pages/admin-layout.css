@@ -1,0 +1,87 @@
+/* Thư viện PTIT — bổ sung theme, không phá flex layout của Ant Design Layout */
+
+.admin-layout-root.ant-layout {
+    min-height: 100vh;
+}
+
+/* Cột phải: chiếm phần còn lại, cho phép bảng co trong flex */
+.admin-layout-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 100vh;
+}
+
+.admin-sider-navy {
+    background: #1a3353 !important;
+}
+
+.admin-sider-navy .ant-layout-sider-children {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.admin-layout-logo {
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.admin-header-bar {
+    flex-shrink: 0;
+    line-height: 1.2;
+}
+
+.admin-page-title {
+    color: #1a3353;
+}
+
+/* Vùng cuộn nội dung — nền xám theo mẫu Pro Layout */
+.admin-content-area {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.admin-content-inner {
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(0, 21, 41, 0.06);
+}
+
+.admin-menu-navy.ant-menu-dark {
+    flex: 1;
+    border-inline-end: none !important;
+    background: transparent !important;
+}
+
+.admin-menu-navy.ant-menu-dark .ant-menu-sub.ant-menu-inline {
+    background: rgba(0, 0, 0, 0.15) !important;
+}
+
+.admin-menu-navy.ant-menu-dark .ant-menu-item,
+.admin-menu-navy.ant-menu-dark .ant-menu-submenu-title {
+    color: rgba(255, 255, 255, 0.88) !important;
+}
+
+.admin-menu-navy.ant-menu-dark .ant-menu-item:hover,
+.admin-menu-navy.ant-menu-dark .ant-menu-submenu-title:hover {
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.admin-menu-navy.ant-menu-dark .ant-menu-item-selected {
+    background: #e6f7ff !important;
+    color: #1a3353 !important;
+}
+
+.admin-menu-navy.ant-menu-dark .ant-menu-item-selected .ant-menu-item-icon,
+.admin-menu-navy.ant-menu-dark .ant-menu-item-selected .anticon {
+    color: #1890ff !important;
+}
+
+.admin-menu-navy.ant-menu-dark .ant-menu-item-selected:hover {
+    background: #e6f7ff !important;
+    color: #1a3353 !important;
+}

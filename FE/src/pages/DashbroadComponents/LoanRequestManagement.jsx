@@ -1,16 +1,62 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Table, Button, Tag, Card, Form, Input, InputNumber, message, notification, Popconfirm, Space } from 'antd';
+import {
+    Table,
+    Button,
+    Tag,
+    Card,
+    Input,
+    message,
+    notification,
+    Popconfirm,
+    Space,
+    List,
+    Typography,
+    Descriptions,
+} from 'antd';
 import { requestGetAllHistoryBook, requestReturnBooks, requestUpdateStatusBook } from '../../config/request';
 import dayjs from 'dayjs';
-import { isBorrowingActive, isPendingApproval, loanStatusMeta } from '../../utils/loanTicketStatus';
+import { isBorrowingActive, isPendingApproval, normalizeLoanStatusKey } from '../../utils/loanTicketStatus';
 
-const LoanRequestManagement = () => {
-    const [data, setData] = useState([]);
-    const [selectedRequest, setSelectedRequest] = useState(null);
+const { Search } = Input;
+const { Text } = Typography;
+
+/** Màu Tag theo enum phiếu mượn (Admin) */
+function statusTagConfig(status) {
+    const k = normalizeLoanStatusKey(status);
+    const map = {
+        PENDING_APPROVAL: { color: 'orange', text: 'Chờ duyệt' },
+        BORROWING: { color: 'green', text: 'Đang mượn' },
+        OVERDUE: { color: 'red', text: 'Quá hạn' },
+        RETURNED: { color: 'default', text: 'Đã trả' },
+        CANCELLED: { color: 'volcano', text: 'Đã hủy' },
+    };
+    return map[k] || { color: 'default', text: status ? String(status) : '—' };
+}
+
+function formatDueDate(record) {
+    const raw = record?.dueDate ?? record?.returnDate;
+    if (!raw || !dayjs(raw).isValid()) return '—';
+    return dayjs(raw).format('DD/MM/YYYY');
+}
+
+function uniqueTitlesFromCopies(bookCopies) {
+    if (!Array.isArray(bookCopies) || !bookCopies.length) return '—';
+    const titles = [...new Set(bookCopies.map((c) => String(c.title || '').trim()).filter(Boolean))];
+    return titles.length ? titles.join(' · ') : '—';
+}
+
+function firstCoverImage(record) {
+    const copies = record?.bookCopies;
+    if (!Array.isArray(copies) || !copies.length) return null;
+    const img = copies.find((c) => c?.image)?.image;
+    return img || null;
+}
+
+const LoanRequestManagement = ({ presetFilter, pageTitle }) => {
+    const [rows, setRows] = useState([]);
+    const [selected, setSelected] = useState(null);
     const [loading, setLoading] = useState(false);
     const [searchText, setSearchText] = useState('');
-    const [detailForm] = Form.useForm();
-    const { Search } = Input;
 
     const fetchData = async () => {
         try {
@@ -20,39 +66,40 @@ const LoanRequestManagement = () => {
             const normalized = list.map((item) => ({
                 ...item,
                 id: item?.id || item?.mysqlId || (item?._id ? String(item._id) : undefined),
-                product: {
-                    ...(item?.product || {}),
-                    id:
-                        item?.product?.id ||
-                        item?.product?.mysqlId ||
-                        (item?.product?._id ? String(item.product._id) : undefined),
-                },
             }));
-            setData(normalized);
-        } catch (error) {
-            message.error('Không thể tải danh sách yêu cầu mượn');
+            setRows(normalized);
+        } catch {
+            message.error('Không thể tải danh sách phiếu mượn');
         } finally {
             setLoading(false);
         }
     };
+
     useEffect(() => {
         fetchData();
     }, []);
-    const handleUpdateStatus = async (id, status, productId, userId) => {
+
+    const productIdForApi = (record) => {
+        const fromCopy = record?.bookCopies?.[0]?.bookId;
+        if (fromCopy) return fromCopy;
+        return record?.product?.id || record?.product?._id || undefined;
+    };
+
+    const handleUpdateStatus = async (record, legacyStatus) => {
+        const id = record.id;
+        if (!id) return;
         try {
             setLoading(true);
-            const data = {
+            await requestUpdateStatusBook({
                 idHistory: id,
-                status,
-                productId,
-                userId,
-            };
-            await requestUpdateStatusBook(data);
-            setSelectedRequest(null);
-            detailForm.resetFields();
-            fetchData();
+                status: legacyStatus,
+                productId: productIdForApi(record),
+                userId: record.userId,
+            });
+            message.success('Cập nhật trạng thái thành công');
+            setSelected(null);
+            await fetchData();
         } catch (error) {
-            console.log(error);
             message.error(error?.response?.data?.message || 'Không thể cập nhật trạng thái');
         } finally {
             setLoading(false);
@@ -64,22 +111,22 @@ const LoanRequestManagement = () => {
             setLoading(true);
             const res = await requestReturnBooks({ loanTicketId: record.id });
             const meta = res?.metadata;
-            if (meta?.fine && Number(meta.fine.fineAmount) > 0) {
+            const fineAmt = Number(meta?.fine?.fineAmount ?? 0);
+            if (fineAmt > 0) {
                 notification.warning({
                     message: 'Trả sách thành công',
-                    description: `Độc giả trễ hạn ${meta.overdueDays} ngày, phát sinh phiếu phạt ${Number(meta.fine.fineAmount).toLocaleString('vi-VN')} VNĐ.`,
+                    description: `Sinh viên trễ hạn ${meta.overdueDays} ngày, phát sinh phiếu phạt ${fineAmt.toLocaleString('vi-VN')} VNĐ.`,
                     duration: 10,
                     placement: 'topRight',
                 });
             } else {
                 notification.success({
                     message: 'Trả sách thành công',
-                    description: 'Đã xác nhận nhận sách về thư viện (đúng hạn hoặc không phát sinh phạt).',
+                    description: 'Đã xác nhận nhận sách về thư viện.',
                     placement: 'topRight',
                 });
             }
-            setSelectedRequest(null);
-            detailForm.resetFields();
+            setSelected(null);
             await fetchData();
         } catch (error) {
             message.error(error?.response?.data?.message || 'Không thể xác nhận trả sách');
@@ -88,99 +135,111 @@ const LoanRequestManagement = () => {
         }
     };
 
-    useEffect(() => {
-        if (!selectedRequest) {
-            detailForm.resetFields();
-            detailForm.setFieldsValue({
-                id: '',
-                fullName: '',
-                bookName: '',
-                quantity: undefined,
-                borrowDate: '',
-                returnDate: '',
-                status: '',
-            });
-            return;
+    const dataByPreset = useMemo(() => {
+        if (presetFilter === 'approval') {
+            return rows.filter((item) => isPendingApproval(item.status));
         }
-        detailForm.setFieldsValue({
-            id: selectedRequest.id || '',
-            fullName: selectedRequest.fullName || '',
-            bookName: selectedRequest?.product?.nameProduct || '',
-            quantity: Number(selectedRequest.quantity || 1),
-            borrowDate: selectedRequest.borrowDate && dayjs(selectedRequest.borrowDate).isValid()
-                ? dayjs(selectedRequest.borrowDate).format('DD/MM/YYYY')
-                : '',
-            returnDate:
-                selectedRequest.returnDate && dayjs(selectedRequest.returnDate).isValid()
-                    ? dayjs(selectedRequest.returnDate).format('DD/MM/YYYY')
-                    : '',
-            status: selectedRequest.status || '',
-        });
-    }, [selectedRequest, detailForm]);
+        if (presetFilter === 'returns') {
+            return rows.filter((item) => isBorrowingActive(item.status));
+        }
+        return rows;
+    }, [rows, presetFilter]);
 
-    const statusTag = useMemo(() => {
-        const status = selectedRequest?.status;
-        const { color, text } = loanStatusMeta(status);
-        return <Tag color={status ? color : 'default'}>{status ? text : 'Chưa chọn'}</Tag>;
-    }, [selectedRequest]);
+    const filteredData = useMemo(() => {
+        const q = String(searchText || '').trim().toLowerCase();
+        if (!q) return dataByPreset;
+        return dataByPreset.filter((item) => {
+            const id = String(item?.id || '').toLowerCase();
+            const borrower = String(item?.fullName || '').toLowerCase();
+            const msv = String(item?.borrowerStudentId || '').toLowerCase();
+            const titles = uniqueTitlesFromCopies(item.bookCopies).toLowerCase();
+            const barcodes = (item.bookCopies || []).map((c) => String(c.barcode || '').toLowerCase()).join(' ');
+            const status = String(item?.status || '').toLowerCase();
+            return (
+                id.includes(q) ||
+                borrower.includes(q) ||
+                msv.includes(q) ||
+                titles.includes(q) ||
+                barcodes.includes(q) ||
+                status.includes(q)
+            );
+        });
+    }, [dataByPreset, searchText]);
+
+    const heading = pageTitle || 'Quản lý phiếu mượn';
 
     const columns = [
-        { title: 'ID Yêu cầu', dataIndex: 'id', key: 'id', render: (text) => <span>{String(text || '').slice(0, 10)}</span> },
-        { title: 'Người mượn', dataIndex: 'fullName', key: 'fullName' },
         {
-            title: 'Ảnh',
-            dataIndex: 'product',
-            key: 'product',
-            render: (record) => (
-                <img
-                    style={{ width: '100px', height: '100px', objectFit: 'cover' }}
-                    src={record?.image ? `${import.meta.env.VITE_API_URL_IMAGE}/${record.image}` : '/placeholder-avatar.png'}
-                    alt=""
-                />
+            title: 'Mã phiếu',
+            dataIndex: 'id',
+            key: 'id',
+            width: 120,
+            ellipsis: true,
+            render: (text) => <span className="font-mono text-xs">{String(text || '').slice(0, 12)}</span>,
+        },
+        {
+            title: 'Người mượn',
+            key: 'borrower',
+            width: 200,
+            render: (_, record) => (
+                <div>
+                    <div className="font-medium text-slate-900">{record.fullName || '—'}</div>
+                    <Text type="secondary" className="text-xs">
+                        {record.borrowerStudentId ? (
+                            <>MSV/MSG: {record.borrowerStudentId}</>
+                        ) : (
+                            <>Mã TK: {String(record.userId || '').slice(0, 10)}…</>
+                        )}
+                    </Text>
+                </div>
             ),
         },
-        { title: 'Tên sách', dataIndex: 'product', key: 'product', render: (record) => record?.nameProduct || '-' },
-        { title: 'Số lượng', dataIndex: 'quantity', key: 'quantity' },
         {
-            title: 'Ngày mượn',
+            title: 'Đầu sách (theo bản sao)',
+            key: 'titles',
+            ellipsis: true,
+            render: (_, record) => (
+                <span className="text-sm text-slate-800" title={uniqueTitlesFromCopies(record.bookCopies)}>
+                    {uniqueTitlesFromCopies(record.bookCopies)}
+                </span>
+            ),
+        },
+        {
+            title: 'Ngày gửi phiếu',
             dataIndex: 'borrowDate',
             key: 'borrowDate',
+            width: 120,
             render: (text) => (text && dayjs(text).isValid() ? dayjs(text).format('DD/MM/YYYY') : '—'),
         },
         {
             title: 'Hạn trả',
-            dataIndex: 'returnDate',
-            key: 'returnDate',
-            render: (text) => (text && dayjs(text).isValid() ? dayjs(text).format('DD/MM/YYYY') : '—'),
+            key: 'dueDate',
+            width: 110,
+            render: (_, record) => formatDueDate(record),
         },
         {
             title: 'Trạng thái',
-            key: 'status',
             dataIndex: 'status',
+            key: 'status',
+            width: 130,
             render: (status) => {
-                const { color, text } = loanStatusMeta(status);
+                const { color, text } = statusTagConfig(status);
                 return <Tag color={color}>{text}</Tag>;
             },
         },
         {
-            title: 'Hành động',
+            title: 'Thao tác',
             key: 'action',
-            width: 320,
-            render: (text, record) => (
+            width: 280,
+            fixed: 'right',
+            render: (_, record) => (
                 <Space wrap size="small" onClick={(e) => e.stopPropagation()}>
                     {isPendingApproval(record.status) && (
                         <>
-                            <Button
-                                onClick={() => handleUpdateStatus(record.id, 'success', record.product?.id, record.userId)}
-                                type="primary"
-                            >
+                            <Button type="primary" size="small" onClick={() => handleUpdateStatus(record, 'success')}>
                                 Duyệt
                             </Button>
-                            <Button
-                                onClick={() => handleUpdateStatus(record.id, 'cancel', record.product?.id, record.userId)}
-                                type="primary"
-                                danger
-                            >
+                            <Button type="primary" danger size="small" onClick={() => handleUpdateStatus(record, 'cancel')}>
                                 Từ chối
                             </Button>
                         </>
@@ -192,7 +251,7 @@ const LoanRequestManagement = () => {
                             cancelText="Đóng"
                             onConfirm={() => handleReturnBooks(record)}
                         >
-                            <Button type="default" className="border-emerald-600 text-emerald-700">
+                            <Button size="small" type="primary" ghost className="border-emerald-600 text-emerald-700">
                                 Xác nhận Trả sách
                             </Button>
                         </Popconfirm>
@@ -202,138 +261,134 @@ const LoanRequestManagement = () => {
         },
     ];
 
-    const filteredData = useMemo(() => {
-        const q = String(searchText || '').trim().toLowerCase();
-        if (!q) return data;
-        return data.filter((item) => {
-            const id = String(item?.id || '').toLowerCase();
-            const borrower = String(item?.fullName || '').toLowerCase();
-            const bookName = String(item?.product?.nameProduct || '').toLowerCase();
-            const status = String(item?.status || '').toLowerCase();
-            return id.includes(q) || borrower.includes(q) || bookName.includes(q) || status.includes(q);
-        });
-    }, [data, searchText]);
+    const detailCover = firstCoverImage(selected);
+    const selectedStatusCfg = selected ? statusTagConfig(selected.status) : null;
 
     return (
         <div className="flex flex-col gap-4">
-            <Card className="shrink-0 rounded-2xl shadow-sm" bodyStyle={{ padding: 14 }}>
+            <Card className="rounded-xl border-slate-200 shadow-sm" bodyStyle={{ padding: 16 }}>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="!mb-0 text-xl font-bold text-slate-900">{heading}</h2>
+                        {selected && <Tag color={selectedStatusCfg?.color}>{selectedStatusCfg?.text}</Tag>}
+                    </div>
+                    <Search
+                        allowClear
+                        placeholder="Mã phiếu, tên, MSV/MSG, tên sách, barcode..."
+                        className="max-w-md"
+                        value={searchText}
+                        onChange={(e) => setSearchText(e.target.value)}
+                    />
+                </div>
+
                 <div className="flex flex-col gap-4 lg:flex-row">
-                    <div className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 shadow-sm lg:w-56">
-                        {selectedRequest?.product?.image ? (
+                    <div className="w-full shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:w-52">
+                        {detailCover ? (
                             <img
-                                src={`${import.meta.env.VITE_API_URL_IMAGE}/${selectedRequest.product.image}`}
-                                alt={selectedRequest?.product?.nameProduct || 'book'}
-                                className="h-52 w-full rounded-xl object-cover shadow-sm"
+                                src={`${import.meta.env.VITE_API_URL_IMAGE}/${detailCover}`}
+                                alt=""
+                                className="h-48 w-full rounded-lg object-cover shadow-sm"
                                 onError={(e) => {
                                     e.currentTarget.src = '/placeholder-book.png';
                                 }}
                             />
                         ) : (
-                            <div className="flex h-52 w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-400">
-                                Chưa chọn yêu cầu
+                            <div className="flex h-48 w-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-center text-sm text-slate-400">
+                                Chọn một phiếu để xem ảnh bìa (cuốn đầu tiên)
                             </div>
                         )}
                     </div>
 
-                    <div className="flex-1">
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                                <h2 className="text-xl font-bold text-slate-900">Quản lý độc giả mượn</h2>
-                                {statusTag}
-                            </div>
-                            <Search
-                                allowClear
-                                placeholder="Tìm kiếm tên sách / độc giả / mã yêu cầu..."
-                                className="w-full max-w-sm"
-                                value={searchText}
-                                onChange={(e) => setSearchText(e.target.value)}
-                            />
-                        </div>
+                    <div className="min-w-0 flex-1">
+                        {selected ? (
+                            <>
+                                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} className="mb-4">
+                                    <Descriptions.Item label="Mã phiếu">{selected.id}</Descriptions.Item>
+                                    <Descriptions.Item label="Người mượn">
+                                        {selected.fullName || '—'}
+                                        {selected.borrowerStudentId ? (
+                                            <Text type="secondary" className="ml-2">
+                                                (MSV/MSG: {selected.borrowerStudentId})
+                                            </Text>
+                                        ) : null}
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="Ngày gửi phiếu">
+                                        {selected.borrowDate && dayjs(selected.borrowDate).isValid()
+                                            ? dayjs(selected.borrowDate).format('DD/MM/YYYY')
+                                            : '—'}
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="Hạn trả (dueDate)">{formatDueDate(selected)}</Descriptions.Item>
+                                </Descriptions>
 
-                        <Form form={detailForm} layout="vertical" size="middle">
-                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                <Form.Item label="ID yêu cầu" name="id">
-                                    <Input disabled className="rounded-xl" />
-                                </Form.Item>
-                                <Form.Item label="Người mượn" name="fullName">
-                                    <Input disabled className="rounded-xl" />
-                                </Form.Item>
-                                <Form.Item label="Tên sách" name="bookName">
-                                    <Input disabled className="rounded-xl" />
-                                </Form.Item>
-                                <Form.Item label="Số lượng" name="quantity">
-                                    <InputNumber disabled className="w-full rounded-xl" min={1} />
-                                </Form.Item>
-                                <Form.Item label="Ngày mượn" name="borrowDate">
-                                    <Input disabled className="rounded-xl" />
-                                </Form.Item>
-                                <Form.Item label="Hạn trả" name="returnDate">
-                                    <Input disabled className="rounded-xl" placeholder="Sau khi duyệt (theo nội quy)" />
-                                </Form.Item>
-                            </div>
+                                <Text strong className="mb-2 block">
+                                    Bản sao cần lấy — mã vạch (Barcode)
+                                </Text>
+                                <List
+                                    size="small"
+                                    bordered
+                                    className="rounded-lg bg-white"
+                                    dataSource={selected.bookCopies || []}
+                                    locale={{ emptyText: 'Không có dữ liệu bản sao' }}
+                                    renderItem={(item) => (
+                                        <List.Item className="!px-3 !py-2">
+                                            <div className="flex w-full flex-wrap items-center justify-between gap-2">
+                                                <span className="font-medium text-slate-800">{item.title || '—'}</span>
+                                                <Tag color="processing" className="m-0 font-mono">
+                                                    {item.barcode}
+                                                </Tag>
+                                            </div>
+                                        </List.Item>
+                                    )}
+                                />
 
-                            <div className="mt-1 flex flex-wrap gap-2">
-                                <Button
-                                    type="primary"
-                                    className="h-10 rounded-xl shadow-sm"
-                                    disabled={!selectedRequest || !isPendingApproval(selectedRequest.status)}
-                                    loading={loading}
-                                    onClick={() =>
-                                        handleUpdateStatus(selectedRequest.id, 'success', selectedRequest.product?.id, selectedRequest.userId)
-                                    }
-                                >
-                                    Duyệt
-                                </Button>
-                                <Button
-                                    danger
-                                    className="h-10 rounded-xl shadow-sm"
-                                    disabled={!selectedRequest || !isPendingApproval(selectedRequest.status)}
-                                    loading={loading}
-                                    onClick={() =>
-                                        handleUpdateStatus(selectedRequest.id, 'cancel', selectedRequest.product?.id, selectedRequest.userId)
-                                    }
-                                >
-                                    Từ chối
-                                </Button>
-                                {selectedRequest && isBorrowingActive(selectedRequest.status) && (
-                                    <Popconfirm
-                                        title="Xác nhận đã nhận đủ sách vật lý từ độc giả?"
-                                        okText="Trả sách"
-                                        cancelText="Đóng"
-                                        onConfirm={() => handleReturnBooks(selectedRequest)}
-                                    >
-                                        <Button className="h-10 rounded-xl border-emerald-600 text-emerald-700 shadow-sm" loading={loading}>
-                                            Xác nhận Trả sách
-                                        </Button>
-                                    </Popconfirm>
-                                )}
-                                <Button
-                                    className="h-10 rounded-xl shadow-sm"
-                                    disabled={!selectedRequest}
-                                    onClick={() => setSelectedRequest(null)}
-                                >
-                                    Làm mới
-                                </Button>
+                                <Space wrap className="mt-4">
+                                    {isPendingApproval(selected.status) && (
+                                        <>
+                                            <Button type="primary" loading={loading} onClick={() => handleUpdateStatus(selected, 'success')}>
+                                                Duyệt
+                                            </Button>
+                                            <Button danger loading={loading} onClick={() => handleUpdateStatus(selected, 'cancel')}>
+                                                Từ chối
+                                            </Button>
+                                        </>
+                                    )}
+                                    {isBorrowingActive(selected.status) && (
+                                        <Popconfirm
+                                            title="Xác nhận đã nhận đủ sách vật lý từ độc giả?"
+                                            okText="Trả sách"
+                                            cancelText="Đóng"
+                                            onConfirm={() => handleReturnBooks(selected)}
+                                        >
+                                            <Button loading={loading} type="primary" ghost className="border-emerald-600 text-emerald-700">
+                                                Xác nhận Trả sách
+                                            </Button>
+                                        </Popconfirm>
+                                    )}
+                                    <Button onClick={() => setSelected(null)}>Bỏ chọn</Button>
+                                </Space>
+                            </>
+                        ) : (
+                            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-slate-500">
+                                Chọn một dòng trong bảng bên dưới để xem chi tiết phiếu và danh sách mã vạch cần nhặt sách.
                             </div>
-                        </Form>
+                        )}
                     </div>
                 </div>
             </Card>
 
-            <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 12 }}>
+            <Card className="rounded-xl shadow-sm" bodyStyle={{ padding: 12 }}>
                 <Table
+                    rowKey={(record) => record.id || record.userId}
                     columns={columns}
                     dataSource={filteredData}
-                    rowKey={(record) => record.id || record.userId}
                     loading={loading}
-                    className="rounded-xl overflow-hidden"
+                    scroll={{ x: 1100, y: 420 }}
+                    pagination={{ pageSize: 8, showSizeChanger: true }}
                     size="middle"
-                    scroll={{ x: 1000, y: 420 }}
-                    pagination={false}
                     onRow={(record) => ({
-                        onClick: () => setSelectedRequest(record),
+                        onClick: () => setSelected(record),
                     })}
-                    rowClassName={(record) => (String(record?.id) === String(selectedRequest?.id) ? 'bg-blue-50' : '')}
+                    rowClassName={(record) => (String(record?.id) === String(selected?.id) ? 'bg-[#e6f7ff]' : '')}
                 />
             </Card>
         </div>

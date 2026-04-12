@@ -122,6 +122,30 @@ function toClientLoan(ticketDoc, extras = {}) {
     };
 }
 
+/** Chi tiết bản sao + tên đầu sách — phục vụ Admin (barcode, lấy sách đúng cuốn). */
+async function buildBookCopiesWithTitles(ticketLean) {
+    const copyIds = ticketLean.bookCopyIds || [];
+    if (!copyIds.length) return [];
+    const copies = await BookCopyMongo.find({ _id: { $in: copyIds } }).lean();
+    const bookMongoIds = [...new Set(copies.map((c) => c.bookId).filter(Boolean).map((id) => String(id)))];
+    const books = await BookMongo.find({ _id: { $in: bookMongoIds } })
+        .select('title nameProduct image')
+        .lean();
+    const bookMap = new Map(books.map((b) => [String(b._id), b]));
+    return copies.map((c) => {
+        const b = c.bookId ? bookMap.get(String(c.bookId)) : null;
+        const title = b ? b.title || b.nameProduct || '' : '';
+        return {
+            copyId: String(c._id),
+            barcode: c.barcode,
+            status: c.status,
+            bookId: c.bookId ? String(c.bookId) : '',
+            title: title || '—',
+            image: b?.image || null,
+        };
+    });
+}
+
 function getUserIdCandidates(user) {
     const ids = [String(user._id)];
     if (user.mysqlId) ids.push(String(user.mysqlId));
@@ -382,8 +406,25 @@ class loanTicketController {
         const list = await LoanTicketMongo.find({}).sort({ createdAt: -1 }).lean();
         const data = await Promise.all(
             list.map(async (item) => {
-                const book = await resolveBookFromTicket(item);
-                return toClientLoan(item, { product: toClientBookEmbedded(book) });
+                const bookCopies = await buildBookCopiesWithTitles(item);
+                const patron = await findUserByAnyId(item.userId);
+                const borrowerStudentId = patron?.studentId || patron?.staffId || patron?.idStudent || null;
+
+                let product = null;
+                if (bookCopies.length && bookCopies[0].bookId) {
+                    const bm = await BookMongo.findById(bookCopies[0].bookId).lean();
+                    product = bm ? toClientBookEmbedded(bm) : null;
+                }
+                if (!product) {
+                    const book = await resolveBookFromTicket(item);
+                    product = book ? toClientBookEmbedded(book) : null;
+                }
+
+                return {
+                    ...toClientLoan(item, { product }),
+                    bookCopies,
+                    borrowerStudentId,
+                };
             }),
         );
         new OK({

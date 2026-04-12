@@ -206,6 +206,7 @@ const UserManagement = () => {
                         <Select
                             options={[
                                 { value: 'user', label: 'Người dùng' },
+                                { value: 'librarian', label: 'Thủ thư' },
                                 { value: 'admin', label: 'Quản trị viên' },
                             ]}
                             className="rounded-xl"

@@ -19,7 +19,7 @@ function LoginUser() {
             const role = String(res?.data?.metadata?.user?.role || '').toLowerCase();
             await refreshAuth();
             message.success('Đăng nhập thành công!');
-            navigate(role === 'admin' ? '/admin' : '/');
+            navigate(role === 'admin' || role === 'librarian' ? '/admin' : '/');
         } catch (error) {
             const errorMessage = error?.response?.data?.message || 'Tài khoản hoặc mật khẩu không chính xác';
             message.error(errorMessage);

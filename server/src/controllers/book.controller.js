@@ -294,6 +294,39 @@ class controllerBook {
         }).send(res);
     }
 
+    /** Danh sách bản sao (barcode) — kho */
+    async listAllBookCopies(req, res) {
+        await ensureLegacyBooks();
+
+        const copies = await BookCopyMongo.find({}).sort({ createdAt: -1 }).limit(3000).lean();
+        const bookIds = [...new Set(copies.map((c) => c.bookId).filter(Boolean))];
+        const books = await BookMongo.find({ _id: { $in: bookIds } })
+            .select('title nameProduct bookCode')
+            .lean();
+        const bookMap = new Map(books.map((b) => [String(b._id), b]));
+
+        const metadata = copies.map((c) => {
+            const b = bookMap.get(String(c.bookId));
+            const title = b?.title || b?.nameProduct || '';
+            return {
+                id: c.mysqlId || String(c._id),
+                _id: String(c._id),
+                barcode: c.barcode,
+                status: c.status,
+                condition: c.condition,
+                bookId: String(c.bookId),
+                bookCode: b?.bookCode || '',
+                title,
+                nameProduct: title,
+            };
+        });
+
+        new OK({
+            message: 'Lấy danh sách bản sao thành công',
+            metadata,
+        }).send(res);
+    }
+
     async getOneProduct(req, res) {
         await ensureLegacyBooks();
 
