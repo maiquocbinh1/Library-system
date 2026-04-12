@@ -122,6 +122,22 @@ export const requestStatistics = async () => {
     return res.data;
 };
 
+const apiFines = '/api/fines';
+export const requestGetAllFines = async () => {
+    const res = await apiClient.get(apiFines);
+    return res.data;
+};
+
+export const requestPayFine = async (fineId) => {
+    const res = await apiClient.put(`${apiFines}/${encodeURIComponent(fineId)}/pay`);
+    return res.data;
+};
+
+export const requestMyUnpaidFines = async () => {
+    const res = await apiClient.get(`${apiFines}/my-unpaid`);
+    return res.data;
+};
+
 const apiProduct = '/api/product';
 export const requestGetAllProduct = async () => {
     const res = await request.get(`${apiProduct}/get-all`);
@@ -186,5 +202,10 @@ export const requestGetAllHistoryBook = async () => {
 
 export const requestUpdateStatusBook = async (data) => {
     const res = await apiClient.post(`${apiHistoryBook}/update-status-book`, data);
+    return res.data;
+};
+
+export const requestReturnBooks = async (data) => {
+    const res = await apiClient.post(`${apiHistoryBook}/return-books`, data);
     return res.data;
 };

@@ -36,7 +36,7 @@ const SendMailBookBorrowFailed = async (email, productInfo) => {
             from: `"Thư viện Moho" <${EMAIL_USER}>`,
             to: email,
             subject: 'Thông báo: Mượn sách không thành công',
-            text: `Rất tiếc, việc mượn sách "${productInfo.nameProduct}" không thành công.`,
+            text: `Rất tiếc, việc mượn sách "${productInfo.nameProduct || productInfo.title}" không thành công.`,
             html: `
             <!DOCTYPE html>
             <html lang="vi">
@@ -139,7 +139,7 @@ const SendMailBookBorrowFailed = async (email, productInfo) => {
                         
                         
                         <div class="book-info">
-                            <div class="book-title">${productInfo.nameProduct}</div>
+                            <div class="book-title">${productInfo.nameProduct || productInfo.title}</div>
                             <div class="book-details">
                                 <strong>Mô tả:</strong> ${productInfo.description || 'Không có mô tả'}<br/>
                                 <strong>Mã sách:</strong> ${productInfo.id}<br/>

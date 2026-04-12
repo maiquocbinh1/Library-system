@@ -11,10 +11,11 @@ const PersonalInfo = () => {
     const [form] = Form.useForm();
 
     const { dataUser, refreshAuth } = useStore();
-    const readerCode = dataUser?.readerCode || dataUser?.idStudent || null;
-    const isReaderCodePending = readerCode === '0';
+    const readerCode =
+        dataUser?.readerCode || dataUser?.staffId || dataUser?.studentId || dataUser?.idStudent || null;
+    const isReaderCodePending =
+        dataUser?.verificationStatus === 'pending' || readerCode === '0';
     const hasReaderCode = Boolean(readerCode && readerCode !== '0');
-    const readerId = dataUser?.mysqlId || dataUser?.id || dataUser?._id || null;
 
     useEffect(() => {
         if (dataUser) {
@@ -88,13 +89,21 @@ const PersonalInfo = () => {
         },
         {
             key: '5',
-            label: 'Mã độc giả',
-            children: readerId ? `Mã độc giả: ${readerId}` : <span className="italic text-gray-500">Chưa điền thông tin</span>,
+            label: 'MSV / MSG',
+            children: hasReaderCode ? (
+                readerCode
+            ) : (
+                <span className="italic text-gray-500">Chưa có</span>
+            ),
         },
         {
             key: '6',
-            label: 'Trạng thái cấp mã',
-            children: hasReaderCode ? readerCode : isReaderCodePending ? 'Đang chờ cấp mã' : 'Chưa có',
+            label: 'Trạng thái xác nhận',
+            children: hasReaderCode
+                ? 'Đã xác nhận'
+                : isReaderCodePending
+                  ? 'Đang chờ thư viện xác nhận MSV/MSG'
+                  : 'Chưa có',
         },
     ];
 
@@ -151,7 +160,7 @@ const PersonalInfo = () => {
                             <Descriptions bordered layout="vertical" items={viewItems} />
                             {!hasReaderCode && !isReaderCodePending && (
                                 <Button type="primary" onClick={handleRequestReaderCode} className="mt-4">
-                                    Gửi yêu cầu cấp mã độc giả
+                                    Gửi yêu cầu xác nhận MSV/MSG
                                 </Button>
                             )}
                         </>

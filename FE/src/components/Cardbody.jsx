@@ -2,7 +2,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBookOpen, faUser, faCalendar, faLanguage, faBuilding } from '@fortawesome/free-solid-svg-icons';
 import { Link } from 'react-router-dom';
 
-import ModalBuyBook from '../components/ModalBuyBook';
+import ModalBorrowBook from '../components/ModalBorrowBook';
 import { useState } from 'react';
 
 function CardBody({ data }) {
@@ -123,7 +123,7 @@ function CardBody({ data }) {
                     </button>
                 </div>
             </div>
-            <ModalBuyBook visible={visible} onCancel={onCancel} bookData={bookData} />
+            <ModalBorrowBook visible={visible} onCancel={onCancel} bookData={bookData} />
         </div>
     );
 }

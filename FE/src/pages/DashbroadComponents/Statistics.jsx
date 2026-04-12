@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Row, Col, Card, Statistic, Modal, Table, Input, Select, Tag } from 'antd';
 import { Bar, Pie } from '@ant-design/charts';
-import { UserOutlined, BookOutlined, SolutionOutlined } from '@ant-design/icons';
+import { UserOutlined, BookOutlined, SolutionOutlined, ReadOutlined, WarningOutlined, DollarCircleOutlined } from '@ant-design/icons';
 import { requestGetAllHistoryBook, requestGetAllProduct, requestGetAllUsers, requestStatistics } from '../../config/request';
 import dayjs from 'dayjs';
+import { isPendingApproval } from '../../utils/loanTicketStatus';
 
 const Statistics = () => {
     const [data, setData] = useState({});
@@ -91,7 +92,7 @@ const Statistics = () => {
                     borrowDate: item?.borrowDate || null,
                     returnDate: item?.returnDate || null,
                 }))
-                .filter((x) => String(x?.status || '').toLowerCase() === 'pending');
+                .filter((x) => isPendingApproval(x?.status));
             setPendingRequests(normalized);
         } finally {
             setPendingLoading(false);
@@ -107,10 +108,11 @@ const Statistics = () => {
 
     const statusColor = (raw) => {
         const s = String(raw || '').toLowerCase();
-        if (s.includes('chờ') || s === 'pending') return '#22c55e';
-        if (s.includes('đã') || s === 'success') return '#3b82f6';
-        if (s.includes('từ') || s === 'cancel') return '#f97316';
-        if (s.includes('quá')) return '#ef4444';
+        if (s.includes('chờ') || s === 'pending' || s.includes('pending_approval')) return '#22c55e';
+        if (s.includes('đã') || s === 'success' || s === 'borrowing') return '#3b82f6';
+        if (s.includes('từ') || s === 'cancel' || s === 'cancelled') return '#f97316';
+        if (s.includes('quá') || s === 'overdue') return '#ef4444';
+        if (s.includes('trả') || s === 'returned') return '#10b981';
         return '#6366f1';
     };
 
@@ -316,6 +318,38 @@ const Statistics = () => {
                             title={<span className="text-slate-500">Yêu cầu chờ duyệt</span>}
                             value={data?.pendingRequests || 0}
                             prefix={<SolutionOutlined className="text-emerald-600" />}
+                        />
+                    </Card>
+                </Col>
+            </Row>
+            <Row gutter={16} className="mb-6">
+                <Col xs={24} sm={12} lg={8}>
+                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
+                        <Statistic
+                            title={<span className="text-slate-500">Tổng sách đang cho mượn</span>}
+                            value={data?.ticketsCurrentlyBorrowing ?? 0}
+                            suffix="phiếu"
+                            prefix={<ReadOutlined className="text-indigo-600" />}
+                        />
+                    </Card>
+                </Col>
+                <Col xs={24} sm={12} lg={8}>
+                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
+                        <Statistic
+                            title={<span className="text-slate-500">Sách quá hạn chưa trả</span>}
+                            value={data?.ticketsOverdueNotReturned ?? 0}
+                            suffix="phiếu"
+                            prefix={<WarningOutlined className="text-amber-600" />}
+                        />
+                    </Card>
+                </Col>
+                <Col xs={24} sm={12} lg={8}>
+                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
+                        <Statistic
+                            title={<span className="text-slate-500">Tổng tiền phạt chờ thu</span>}
+                            value={data?.totalUnpaidFineAmount ?? 0}
+                            formatter={(v) => `${Number(v).toLocaleString('vi-VN')} đ`}
+                            prefix={<DollarCircleOutlined className="text-rose-600" />}
                         />
                     </Card>
                 </Col>

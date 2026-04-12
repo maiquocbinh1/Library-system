@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Form, Input, Divider, message } from 'antd';
+import { Button, Form, Input, Divider, message, Select } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined, PhoneOutlined, HomeOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
@@ -23,7 +23,13 @@ function RegisterUser() {
         }
 
         try {
-            await requestRegister(values);
+            const { readerType, studentId, staffId, ...rest } = values;
+            await requestRegister({
+                ...rest,
+                readerType,
+                studentId: readerType === 'GiangVien_CanBo' ? undefined : studentId,
+                staffId: readerType === 'GiangVien_CanBo' ? staffId : undefined,
+            });
             toast.success('Đăng ký thành công!');
             setLoading(false);
             setTimeout(() => {
@@ -131,11 +137,61 @@ function RegisterUser() {
                                         />
                                     </Form.Item>
 
+                                    <Form.Item
+                                        name="readerType"
+                                        label="Loại bạn đọc"
+                                        rules={[{ required: true, message: 'Vui lòng chọn loại bạn đọc' }]}
+                                    >
+                                        <Select
+                                            placeholder="Chọn loại"
+                                            options={[
+                                                { value: 'SinhVien_ChinhQuy', label: 'Sinh viên chính quy' },
+                                                { value: 'HocVien_NCS', label: 'Học viên / NCS' },
+                                                { value: 'GiangVien_CanBo', label: 'Giảng viên / Cán bộ' },
+                                            ]}
+                                        />
+                                    </Form.Item>
+
+                                    <Form.Item
+                                        noStyle
+                                        shouldUpdate={(prev, cur) => prev.readerType !== cur.readerType}
+                                    >
+                                        {({ getFieldValue }) => {
+                                            const rt = getFieldValue('readerType');
+                                            if (rt === 'GiangVien_CanBo') {
+                                                return (
+                                                    <Form.Item
+                                                        name="staffId"
+                                                        label="MSG (mã giảng viên/cán bộ)"
+                                                        rules={[{ required: true, message: 'Vui lòng nhập MSG' }]}
+                                                    >
+                                                        <Input className="rounded-md" placeholder="MSG" />
+                                                    </Form.Item>
+                                                );
+                                            }
+                                            if (rt) {
+                                                return (
+                                                    <Form.Item
+                                                        name="studentId"
+                                                        label="MSV (mã sinh viên)"
+                                                        rules={[{ required: true, message: 'Vui lòng nhập MSV' }]}
+                                                    >
+                                                        <Input className="rounded-md" placeholder="MSV" />
+                                                    </Form.Item>
+                                                );
+                                            }
+                                            return null;
+                                        }}
+                                    </Form.Item>
+
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <Form.Item name="phone">
+                                        <Form.Item
+                                            name="phone"
+                                            rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}
+                                        >
                                             <Input
                                                 prefix={<PhoneOutlined className="text-gray-400" />}
-                                                placeholder="Số điện thoại (không bắt buộc)"
+                                                placeholder="Số điện thoại"
                                                 className="rounded-md"
                                             />
                                         </Form.Item>

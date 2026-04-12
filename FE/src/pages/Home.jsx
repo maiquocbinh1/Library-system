@@ -4,6 +4,7 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import BookCard from '../components/BookCard';
 import { requestGetAllHistoryBook, requestGetAllProduct } from '../config/request';
+import { normalizeLoanStatusKey } from '../utils/loanTicketStatus';
 
 const PAGE_SIZE = 12;
 
@@ -53,7 +54,7 @@ function Home() {
     const trendingBooks = useMemo(() => {
         if (!historyItems.length || !products.length) return [];
         const borrowCountByBookId = historyItems.reduce((acc, item) => {
-            if (item?.status === 'cancel') return acc;
+            if (normalizeLoanStatusKey(item?.status) === 'CANCELLED') return acc;
             const bookId = String(item?.bookId || item?.product?.id || '');
             if (!bookId) return acc;
             acc[bookId] = (acc[bookId] || 0) + 1;

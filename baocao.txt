@@ -1,0 +1,233 @@
+BAO CAO MINI – HE THONG QUAN LY THU VIEN (tham chieu tu tai lieu MIS)
+
+1) Chu de & muc tieu
+- He thong thu vien duoc xay dung nhu mot he thong thong tin quan ly (MIS) phuc vu:
+  + Quan ly danh muc sach, ton kho, hinh anh bia, mo ta.
+  + Ho tro quy trinh muon/tra va xu ly yeu cau muon.
+  + Quan ly nguoi dung, cap the doc gia, theo doi trang thai.
+  + Cung cap thong ke phuc vu ra quyet dinh (decision making).
+
+Ly do chon de tai
+- Gan voi thuc te: thu vien co nhieu nghiep vu (muon/tra, ton kho, cap the) va can thong tin tong hop de quan ly.
+- Phu hop ly thuyet MIS: he thong co du lieu giao dich (TPS) + bao cao/thong ke (MIS) phuc vu ra quyet dinh.
+- De demo ro rang: co the trinh bay theo luong (tao sach -> muon -> duyet -> thong ke) de thay tac dong len du lieu.
+
+Khao sat ly do chon de tai
+- Muc tieu: xac dinh nhu cau quan ly thu vien o muc co ban (danh muc sach, ton kho, muon/tra, cap the) va tinh can thiet cua thong ke (MIS) de ho tro ra quyet dinh.
+- Doi tuong khao sat (tham khao):
+  + Nhom Admin/Thu thu (nguoi quan ly): quan tam quy trinh duyet muon, cap nhat ton kho, cap the doc gia, bao cao thong ke.
+  + Nhom Doc gia (nguoi su dung): quan tam tim sach, xem chi tiet, gui yeu cau muon, theo doi trang thai.
+- Phuong phap khao sat (tham khao):
+  + Phong van nhanh (5–10 phut) + tong hop nhu cau theo cac tinh huong su dung (use-case).
+  + Quan sat luong nghiep vu co ban: them sach -> muon -> duyet -> cap nhat ton kho -> thong ke.
+- Ket qua tong hop (rut ra tu nhu cau thuc te):
+  + Nhu cau ve du lieu: can thong tin sach day du (ma sach, ten, tac gia, the loai, mo ta, anh bia, ton kho).
+  + Nhu cau ve quy trinh: doc gia can thao tac muon nhanh; admin can duyet/tu choi ro rang va theo doi lich su.
+  + Nhu cau ve quan ly: can co cap the doc gia (ma doc gia, han the) de chuan hoa thong tin va truy vet.
+  + Nhu cau ve thong ke (MIS): can tong hop so luong sach, tinh trang ton kho, so yeu cau cho duyet, tinh trang muon theo trang thai de ho tro ra quyet dinh (bo sung sach, dieu chinh quy trinh).
+- Ket luan: De tai “He thong quan ly thu vien” phu hop vi vua bao phu nghiep vu giao dich (TPS) vua co lop thong tin tong hop/bao cao (MIS), de trinh bay theo luong ro rang va gan voi bai toan thuc te.
+
+2) Goc nhin MIS (Management – Information – System)
+- Management: Admin/Thu thu la nguoi ra quyet dinh (duyet yeu cau, cap the, cap nhat ton kho…).
+- Information: thong tin sach, nguoi dung, lich su muon, trang thai duyet, thong ke ton kho…
+- System: tap hop quy trinh + phan mem + co so du lieu + giao dien de thu thap, xu ly, luu tru va bao cao.
+
+3) Kien truc he thong
+- Frontend (FE): React + Vite + Ant Design + Tailwind.
+  + UI khach hang: xem danh muc sach, chi tiet sach, dang nhap/dang ky, muon sach.
+  + UI admin: dashboard thong ke, quan ly sach, yeu cau muon sach, quan ly nguoi dung, quan ly ma doc gia.
+- Backend (server): Node.js/Express + Mongoose.
+  + API san pham/sach, nguoi dung, lich su muon sach, thong ke.
+  + Upload hinh anh (multer) va luu path de FE render.
+- Database: MongoDB (Product, User, HistoryBook, ReaderCode…).
+
+Thong tin kien truc he thong (tham chieu tu noi dung he thong thong tin trong tai lieu MIS)
+- Mo hinh tong quat: He thong thong tin may tinh (Computer-Based Information System) gom 4 thanh phan chinh:
+  (1) Con nguoi: Admin/Thu thu/Doc gia, moi nhom co nhu cau thong tin va quyen han khac nhau.
+  (2) Quy trinh (procedures): quy trinh cap nhat sach, tao phieu muon, duyet/tu choi, cap the doc gia, thong ke.
+  (3) Du lieu (data): sach, nguoi dung, lich su muon, trang thai, the doc gia.
+  (4) Phan mem + ha tang: FE (UI) + BE (API) + DB (MongoDB) + mang.
+
+- Phan lop he thong theo muc dich su dung:
+  + TPS (Transaction Processing System): xu ly giao dich hang ngay (tao yeu cau muon, cap nhat ton kho, cap nhat thong tin sach).
+  + MIS (Management Information System): tong hop va bao cao (dashboard, thong ke, danh sach chi tiet) de ho tro quan ly.
+  + DSS/EIS (goi y mo rong): canh bao sach sap het, thong ke xu huong muon, ho tro quyet dinh bo sung sach.
+
+- Goc nhin “Database Management Technology”:
+  + Du lieu duoc luu trong CSDL MongoDB theo cac collection (products, users, historyBooks, reader_codes...).
+  + DBMS giup giam trung lap, ho tro truy van, cap quyen truy cap, va dam bao toan ven du lieu.
+
+- Neu trien khai thuc te (kien truc may chu - goc nhin he thong thong tin):
+  + Tang giao dien (Presentation): trinh duyet nguoi dung truy cap FE (static hosting).
+  + Tang ung dung (Application): server Node.js xu ly nghiep vu va phan quyen (API).
+  + Tang du lieu (Data): MongoDB luu tru du lieu, thiet lap backup/phan quyen.
+  + Tang truyen thong (Network): domain/SSL, reverse proxy, gioi han CORS, firewall.
+
+De cu the hon (tham chieu theo cach tiep can “he thong thong tin” trong MIS: phan mem + ha tang + mang)
+- Mo hinh trien khai toi thieu (phu hop trien khai thu nghiem/truong lop):
+  + 01 VPS(may chu ao)/Server:
+    * CPU: 2 vCPU
+    * RAM: 4 GB
+    * SSD: 40–60 GB
+    * He dieu hanh: Ubuntu 22.04
+    * Thanh phan chay tren may: Nginx (reverse proxy) + Node.js API (PM2/Docker)
+  + MongoDB:
+    * Khuyen dung MongoDB Atlas (tach roi) de co backup, bao mat, quan ly user/IP allowlist.
+    * Neu tu dung: can replica set + backup dinh ky.
+  + Luu anh bia sach:
+    * Cach don gian: luu folder uploads tren VPS (can backup + co volume neu Docker).
+    * Cach chuan: dung Object Storage (S3/R2/MinIO) va luu URL/path trong DB.
+
+- Mo hinh khuyen nghi (on dinh, de mo rong):
+  + FE (Vite build): deploy static qua Nginx hoac Vercel/Netlify + CDN.
+  + API: Docker container (2–4 replicas neu tai tang), can load balancer/reverse proxy.
+  + DB: MongoDB Atlas cluster (M2/M5 tuy quy mo), bat backup + monitoring.
+  + Email service: SMTP/SendGrid/Mailgun cho thong bao duyệt/tu choi.
+
+- Uoc tinh tai nguyen theo quy mo (tham khao):
+  + Nho (<= 200 nguoi dung dong thoi, <= 10k dau sach):
+    * API: 2 vCPU / 4 GB RAM
+    * DB: Atlas M2/M5
+  + Vua (<= 1k nguoi dung dong thoi, <= 100k dau sach):
+    * API: 4 vCPU / 8–16 GB RAM
+    * DB: Atlas M10+, bat index + caching (Redis neu can)
+
+- He thong phu tro (xung quanh):
+  + SSL/TLS: LetsEncrypt, bat HTTPS.
+  + Logging/Monitoring: PM2 logs, healthcheck, canh bao (UptimeRobot/Grafana).
+  + Backup: backup DB (Atlas), backup uploads (neu luu local), xuat du lieu dinh ky.
+  + Bao mat: firewall, gioi han IP truy cap DB, tao user DB theo role (readOnly/readWrite), bao ve file .env.
+
+Giai thich Nginx & Reverse Proxy (de thuyet trinh trien khai)
+- Nginx la phan mem web server / reverse proxy pho bien, chay o tang “Network/Presentation”.
+- Vai tro khi trien khai he thong thu vien:
+  + Serve frontend static (file HTML/CSS/JS sau khi build Vite).
+  + Lam reverse proxy: nhan request tu trinh duyet va chuyen tiep den backend API (Node.js) dang chay o port noi bo.
+  + Ho tro SSL/HTTPS (LetsEncrypt), nen tang bao mat va hieu nang.
+- Reverse proxy hoat dong nhu “cua ngo”:
+  + Client -> Nginx (domain + HTTPS) -> proxy /api -> Node.js API
+  + Client -> Nginx -> serve / (FE) va co the serve /uploads (neu luu anh local)
+- Loi ich:
+  + Giau port noi bo (Node chi can listen 127.0.0.1:3000), giam be mat tan cong.
+  + De cau hinh CORS/headers, rate limit, gzip/brotli, caching.
+  + De scale: Nginx co the load balance nhieu instance API.
+
+Neu toi la 1 nguoi dung khac muon truy cap CSDL MongoDB thi lam the nao?
+- Can co thong tin ket noi (MongoDB connection string), vi du dang:
+  mongodb+srv://<username>:<password>@<cluster-host>/<dbName>?retryWrites=true&w=majority
+- Can duoc cap quyen truy cap:
+  + Tao user DB (nen tao user rieng voi quyen readOnly neu chi xem du lieu).
+  + Tren MongoDB Atlas: add IP vao Network Access (whitelist) hoac dung VPN/0.0.0.0/0 (khong khuyen khich).
+- Cong cu truy van:
+  + MongoDB Compass: paste connection string -> connect -> xem collections -> query/filter/export.
+  + mongosh: mongosh "<connection-string>" -> db.<collection>.find({...})
+- Co the truy van du lieu khong?
+  + Co, neu co account + quyen (role) phu hop. Neu chi can doc, chi cap role read (hoac readAnyDatabase).
+  + Trong ung dung, connection string thuong duoc dat trong file .env (khong chia se len git).
+
+4) Chuc nang chinh (theo nhom he thong thong tin)
+4.1 Transaction Processing (TPS)
+- Tao/cap nhat/xoa sach.
+- Tao yeu cau muon, cap nhat trang thai (pending/success/cancel), dong bo ton kho.
+- Dang ky/cap the doc gia (ghi nhan thong tin the, han su dung).
+
+4.2 Management Information System (MIS)
+- Dashboard thong ke:
+  + Tong so nguoi dung, tong so dau sach.
+  + Trang thai muon sach (da duyet/cho duyet/tu choi/qua han).
+  + Danh sach chi tiet (modal) khi click vao cac the thong ke.
+- Quan ly va truy xuat thong tin de phuc vu bao cao va ra quyet dinh.
+
+4.3 Decision Support (giai doan nang cao)
+- Co the mo rong: canh bao sach sap het, phan tich xu huong muon theo thoi gian, goi y bo sung dau sach.
+
+5) Luong nghiep vu tieu bieu (demo thuyet trinh)
+- (1) Admin tao/quan ly sach: nhap thong tin + anh bia + ton kho -> cap nhat bang du lieu.
+- (2) Khach hang xem chi tiet sach -> bam “Muon ngay” -> tao yeu cau.
+- (3) Admin mo “Yeu cau muon sach” -> chon yeu cau -> duyet/tu choi -> trang thai cap nhat.
+- (4) Admin cap the doc gia: tao doc gia moi + nhap thong tin the -> he thong tu tinh ngay het han.
+- (5) Admin xem dashboard thong ke -> click tung the de xem danh sach chi tiet.
+
+6) Diem nhan ky thuat
+- Dong bo du lieu FE/BE: su dung ID Mongo (_id) va truong id normalize de thao tac CRUD on dinh.
+- Tinh toan han the (expiresAt) tu ngay lam the (issuedAt) + goi thoi han (planMonths).
+- Render anh bia: uu tien URL http; neu la path upload thi ghep theo VITE_API_URL_IMAGE; co fallback neu anh loi.
+- Bao mat mat khau: luu bcrypt hash trong DB; UI/ API khong tra ve mat khau plaintext.
+
+8) Liet ke chuc nang & luong hoat dong (tham chieu theo code)
+
+8.1 Chuc nang phia nguoi dung (FE)
+- Danh muc sach:
+  + Trang: `FE/src/pages/Categories.jsx`
+  + Goi API: `requestGetAllProduct()` -> `GET /api/product/get-all`
+  + Hien thi danh sach sach theo the loai + phan trang.
+- Xem chi tiet sach:
+  + Trang: `FE/src/pages/DetailProduct.jsx`
+  + Lay `id` tu route `/product/:id` -> goi `requestGetOneProduct(id)` -> `GET /api/product/get-one?id=...`
+  + Render thong tin (NXB, Cty phat hanh, loai bia, so trang, ngon ngu, nam XB, ton kho) + mo ta.
+- Muon sach:
+  + UI: nut “Mượn ngay” (Detail/Modal)
+  + Goi API: `requestCreateHistoryBook()` -> `POST /api/history-book/create`
+  + Ket qua: tao phieu muon (status pending) va cap nhat ton kho theo nghiep vu.
+
+8.2 Chuc nang phia quan tri (FE Admin)
+- Dashboard thong ke:
+  + Trang: `FE/src/pages/DashbroadComponents/Statistics.jsx`
+  + Goi API: `requestStatistics()` -> `GET /api/user/statistics`
+  + Click cac the (Tong users / Tong dau sach / Yeu cau cho duyet) -> mo modal list chi tiet.
+- Quan ly sach:
+  + Trang: `FE/src/pages/DashbroadComponents/BookManagement.jsx`
+  + Chuc nang: them sach, sua thong tin, sua anh bia, cap ma sach, dong bo bookCode, auto-save form chi tiet.
+  + API chinh: `requestCreateProduct`, `requestUpdateProduct`, `requestDeleteProduct`, `requestUploadImageProduct`.
+- Yeu cau muon sach:
+  + Trang: `FE/src/pages/DashbroadComponents/LoanRequestManagement.jsx`
+  + Goi API list: `requestGetAllHistoryBook()` -> `GET /api/history-book/get-all-history-book`
+  + Duyet/Tu choi: `requestUpdateStatusBook()` -> `POST /api/history-book/update-status-book`
+- Quan ly ma doc gia:
+  + Trang: `FE/src/pages/DashbroadComponents/ReaderCodeManagement.jsx` (danh sach + chi tiet + sua)
+  + Trang: `FE/src/pages/DashbroadComponents/CardIssuanceManagement.jsx` (dang ky lam the doc gia)
+  + API: `requestIssueReaderCard()` -> `POST /api/user/issue-reader-card`
+
+8.3 Luong nghiep vu chi tiet (theo backend)
+
+A) Luong “Muon sach” (Transaction -> cap nhat ton kho)
+- FE (user) gui `POST /api/history-book/create` voi `bookId`, `quantity`, thong tin user.
+- BE: `server/src/controllers/historyBook.controller.js`:
+  + Kiem tra sach ton tai va `stock >= quantity`.
+  + Tru ton kho bang truy van atomic:
+    `ProductMongo.findOneAndUpdate({ _id, stock: { $gte: qty } }, { $inc: { stock: -qty } })`
+  + Tao ban ghi `HistoryBookMongo` (phieu muon) voi `status: 'pending'`.
+- Y nghia MIS: day la TPS (giao dich) anh huong truc tiep den ton kho.
+
+B) Luong “Admin duyet / tu choi” yeu cau muon
+- FE (admin) gui `POST /api/history-book/update-status-book` voi `idHistory`, `status`, `productId`, `userId`.
+- BE: `server/src/controllers/historyBook.controller.js` (ham `updateStatusBook`):
+  + Neu `status = 'cancel'` -> hoan kho bang `$inc: { stock: +quantity }`.
+  + Cap nhat `findHistory.status = status`.
+  + Gui email thong bao (neu co).
+- Luu y: ton kho da bi tru tu luc tao yeu cau; duyet (success) chi “xac nhan”, tu choi moi cong kho lai.
+
+C) Luong “Admin them/sua sach”
+- Them sach: `POST /api/product/create` (auth admin)
+  + BE: `server/src/controllers/product.controller.js` kiem tra truong bat buoc, tao bookCode (hoac nhan bookCode), luu vao `ProductMongo`.
+- Sua sach: `POST /api/product/update?id=...`
+  + BE cho phep update cac truong (name, category_1, description, stock, image...) va kiem tra trung bookCode neu doi.
+
+D) Luong “Cap the doc gia”
+- FE (admin) nhap thong tin the -> `POST /api/user/issue-reader-card`
+- BE: `server/src/controllers/users.controller.js`:
+  + Validate goi thoi han (3/6/12 thang), kiem tra trung readerCode.
+  + Tinh `expiresAt` tu `issuedAt + planMonths`.
+  + Upsert `ReaderCodeMongo` va cap nhat `UserMongo.idStudent = readerCode`.
+
+E) Luong “Thong ke” (MIS)
+- `GET /api/user/statistics`:
+  + Dem tong users, tong books, pending requests.
+  + Tong hop loanStatusData (da duyet/cho duyet/tu choi/qua han) de hien bieu do va the so lieu.
+
+7) Ket luan
+- He thong dap ung dung vai tro MIS: thu thap du lieu (TPS), tong hop & bao cao (MIS), ho tro ra quyet dinh (thong ke).
+- Co kha nang mo rong theo huong DSS: canh bao, du bao, bao cao dinh ky, phan quyen chi tiet.
+
+Ghi chu: File nay dung cho thuyet trinh noi bo (khong push len git).
+

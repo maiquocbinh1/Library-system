@@ -14,27 +14,57 @@ import {
     Typography,
 } from 'antd';
 import { BookOutlined, CalendarOutlined, IdcardOutlined, PhoneOutlined, UserOutlined } from '@ant-design/icons';
+import axios from 'axios';
 import dayjs from 'dayjs';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from '../hooks/useStore';
 import { requestCreateHistoryBook } from '../config/request';
 import { toast } from 'react-toastify';
 
 const { Title, Text } = Typography;
 
-const BORROW_DURATION_MAX_DAYS = 30;
+const DEFAULT_LOAN_DAYS_FALLBACK = 30;
+
+async function fetchPolicyLoanDays(readerType) {
+    if (!readerType) return DEFAULT_LOAN_DAYS_FALLBACK;
+    try {
+        const { data } = await axios.get(
+            `${import.meta.env.VITE_API_URL}/api/policy/reader-type/${encodeURIComponent(readerType)}`,
+        );
+        const days = data?.metadata?.loanDays;
+        return Number.isFinite(Number(days)) ? Number(days) : DEFAULT_LOAN_DAYS_FALLBACK;
+    } catch {
+        return DEFAULT_LOAN_DAYS_FALLBACK;
+    }
+}
 
 function ModalBorrowBook({ visible, onCancel, bookData }) {
     const [form] = Form.useForm();
     const [loading, setLoading] = useState(false);
+    const [loanDaysMax, setLoanDaysMax] = useState(DEFAULT_LOAN_DAYS_FALLBACK);
     const { dataUser } = useStore();
 
-    const today = dayjs();
-    const minReturnDate = today.add(1, 'day');
-    const maxReturnDate = today.add(BORROW_DURATION_MAX_DAYS, 'day');
+    const today = useMemo(() => dayjs(), [visible]);
+
+    const minReturnDate = useMemo(() => today.add(1, 'day'), [today]);
+    const maxReturnDate = useMemo(() => today.add(loanDaysMax, 'day'), [today, loanDaysMax]);
+
     const bookImageSrc = bookData?.image?.startsWith('http')
         ? bookData.image
         : `${import.meta.env.VITE_API_URL_IMAGE}/${bookData?.image || ''}`;
+
+    const loadPolicy = useCallback(async () => {
+        const days = await fetchPolicyLoanDays(dataUser?.readerType);
+        setLoanDaysMax(days);
+    }, [dataUser?.readerType]);
+
+    useEffect(() => {
+        if (visible && dataUser?.readerType) {
+            loadPolicy();
+        } else if (visible) {
+            setLoanDaysMax(DEFAULT_LOAN_DAYS_FALLBACK);
+        }
+    }, [visible, dataUser?.readerType, loadPolicy]);
 
     useEffect(() => {
         if (visible && dataUser) {
@@ -42,8 +72,9 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
                 quantity: 1,
                 fullName: dataUser?.fullName || '',
                 address: dataUser?.address || '',
-                phoneNumber: dataUser?.phoneNumber || '',
-                studentId: dataUser?.idStudent || '',
+                phoneNumber: dataUser?.phone || dataUser?.phoneNumber || '',
+                studentId:
+                    dataUser?.studentId || dataUser?.staffId || dataUser?.idStudent || dataUser?.readerCode || '',
                 returnDate: minReturnDate,
             });
         }
@@ -53,18 +84,20 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
         setLoading(true);
         try {
             const borrowData = {
-                ...values,
+                fullName: values.fullName,
+                address: values.address,
+                phoneNumber: values.phoneNumber,
+                quantity: values.quantity,
                 bookId: bookData?.id,
                 borrowDate: today.format('YYYY-MM-DD'),
-                returnDate: values.returnDate.format('YYYY-MM-DD'),
             };
 
             try {
                 await requestCreateHistoryBook(borrowData);
-                toast.success('Đăng ký mượn sách thành công!');
+                toast.success('Đăng ký mượn sách thành công! Phiếu chờ thư viện duyệt; hạn trả sẽ được tính sau khi duyệt theo nội quy PTIT.');
             } catch (error) {
                 console.error('Error submitting borrow request:', error);
-                toast.error(error.response.data.message);
+                toast.error(error.response?.data?.message || 'Có lỗi xảy ra');
             }
 
             form.resetFields();
@@ -84,18 +117,19 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
 
     const validateReturnDate = (_, value) => {
         if (!value) {
-            return Promise.reject(new Error('Vui lòng chọn ngày trả!'));
+            return Promise.reject(new Error('Vui lòng chọn ngày trả dự kiến!'));
         }
         if (value.isBefore(minReturnDate, 'day')) {
             return Promise.reject(new Error('Ngày trả phải sau ngày mượn ít nhất 1 ngày!'));
         }
         if (value.isAfter(maxReturnDate, 'day')) {
-            return Promise.reject(new Error(`Thời gian mượn tối đa ${BORROW_DURATION_MAX_DAYS} ngày!`));
+            return Promise.reject(new Error(`Theo nội quy, khoảng mượn tối đa ${loanDaysMax} ngày (từ hôm nay)!`));
         }
         return Promise.resolve();
     };
 
     const isSubmitDisabled = !bookData || bookData.stock <= 0 || loading;
+    const bookTitle = bookData?.nameProduct || bookData?.title;
 
     return (
         <Modal
@@ -124,7 +158,7 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
                             <Col xs={24} sm={8} className="flex justify-center">
                                 <Image
                                     src={bookImageSrc}
-                                    alt={bookData.nameProduct}
+                                    alt={bookTitle}
                                     width={120}
                                     height={160}
                                     className="rounded-lg shadow-md object-cover"
@@ -135,7 +169,7 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
                             <Col xs={24} sm={16}>
                                 <Space direction="vertical" size="small" className="w-full">
                                     <Title level={5} className="text-gray-800 mb-2">
-                                        {bookData.nameProduct}
+                                        {bookTitle}
                                     </Title>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                                         <span>
@@ -166,6 +200,10 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
                     <Title level={4} className="text-gray-800 mb-4">
                         👤 Thông tin người mượn
                     </Title>
+                    <p className="text-sm text-gray-600 mb-2">
+                        Hạn trả chính thức được ghi trên phiếu sau khi thư viện duyệt (ngày duyệt + {loanDaysMax} ngày theo
+                        nội quy).
+                    </p>
                     <Form form={form} layout="vertical" onFinish={handleSubmit} requiredMark={false} preserve={false}>
                         <Row gutter={16}>
                             <Col xs={24} sm={12}>
@@ -232,12 +270,12 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
                         <Divider className="my-4" />
 
                         <Title level={5} className="text-gray-800 mb-4">
-                            📅 Thời gian mượn
+                            📅 Thời gian (dự kiến)
                         </Title>
 
                         <Row gutter={16}>
                             <Col xs={24} sm={12}>
-                                <Form.Item label="Ngày mượn">
+                                <Form.Item label="Ngày gửi yêu cầu">
                                     <Input
                                         value={today.format('DD/MM/YYYY')}
                                         disabled
@@ -249,12 +287,12 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
                             <Col xs={24} sm={12}>
                                 <Form.Item
                                     name="returnDate"
-                                    label="Ngày trả dự kiến"
+                                    label={`Ngày trả dự kiến (tối đa ${loanDaysMax} ngày từ hôm nay)`}
                                     rules={[{ validator: validateReturnDate }]}
                                 >
                                     <DatePicker
                                         className="w-full h-10"
-                                        placeholder="Chọn ngày trả"
+                                        placeholder="Chọn ngày trả dự kiến"
                                         format="DD/MM/YYYY"
                                         showToday={false}
                                         disabledDate={(current) =>
