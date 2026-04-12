@@ -9,7 +9,8 @@ function Header() {
     const { dataUser, refreshAuth } = useStore();
     const navigate = useNavigate();
     const [searchText, setSearchText] = useState('');
-    const isAdmin = String(dataUser?.role || '').toLowerCase() === 'admin';
+    const role = String(dataUser?.role || '').toLowerCase();
+    const isLibraryStaff = role === 'admin' || role === 'librarian';
 
     const handleLogout = async () => {
         try {
@@ -83,7 +84,7 @@ function Header() {
                                             label: 'Thông tin cá nhân',
                                             onClick: () => navigate('/infoUser?tab=info'),
                                         },
-                                        ...(!isAdmin
+                                        ...(!isLibraryStaff
                                             ? [
                                                   {
                                                       key: 'settings',
@@ -93,7 +94,7 @@ function Header() {
                                                   },
                                               ]
                                             : []),
-                                        ...(isAdmin
+                                        ...(isLibraryStaff
                                             ? [
                                                   {
                                                       key: 'admin',

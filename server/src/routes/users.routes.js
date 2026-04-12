@@ -17,6 +17,7 @@ var upload = multer({ storage: storage });
 
 const { authUser, asyncHandler } = require('../auth/checkAuth');
 const { isAdmin } = require('../middlewares/admin.middleware');
+const { libraryStaff } = require('../middlewares/libraryStaff.middleware');
 
 const controllerUser = require('../controllers/users.controller');
 
@@ -36,10 +37,10 @@ router.post('/update-password', authUser, isAdmin, asyncHandler(controllerUser.u
 router.post('/upload-image', upload.single('image'), authUser, asyncHandler(controllerUser.changeAvatar));
 
 router.post('/request-id-student', authUser, asyncHandler(controllerUser.requestIdStudent));
-router.post('/confirm-id-student', authUser, isAdmin, asyncHandler(controllerUser.confirmIdStudent));
-router.post('/issue-reader-card', authUser, isAdmin, asyncHandler(controllerUser.issueReaderCard));
-router.post('/admin-create-reader', authUser, isAdmin, asyncHandler(controllerUser.adminCreateReader));
+router.post('/confirm-id-student', authUser, libraryStaff, asyncHandler(controllerUser.confirmIdStudent));
+router.post('/issue-reader-card', authUser, libraryStaff, asyncHandler(controllerUser.issueReaderCard));
+router.post('/admin-create-reader', authUser, libraryStaff, asyncHandler(controllerUser.adminCreateReader));
 router.get('/get-request-loan', authUser, isAdmin, asyncHandler(controllerUser.getRequestLoan));
-router.get('/statistics', authUser, isAdmin, asyncHandler(controllerUser.getStatistics));
+router.get('/statistics', authUser, libraryStaff, asyncHandler(controllerUser.getStatistics));
 
 module.exports = router;

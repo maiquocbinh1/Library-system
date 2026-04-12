@@ -6,6 +6,8 @@
         "dev": "nodemon src/server.js",
         "seed:google-books": "node src/scripts/importGoogleBooks.js",
         "seed:admin": "node src/scripts/seedAdmin.js",
+        "seed:test-student": "node src/scripts/seedTestStudent.js",
+        "seed:policies": "node src/scripts/seedPolicies.js",
         "test": "echo \"Error: no test specified\" && exit 1"
     },
     "keywords": [],

@@ -11,7 +11,7 @@ const userMongoSchema = new mongoose.Schema(
         address: { type: String, default: null },
         email: { type: String, required: true },
         password: { type: String, default: null },
-        role: { type: String, enum: ['admin', 'user'], default: 'user' },
+        role: { type: String, enum: ['admin', 'user', 'librarian'], default: 'user' },
         typeLogin: { type: String, enum: ['google', 'email'], required: true },
 
         /** MSV — sparse unique để có thể null khi dùng MSG */

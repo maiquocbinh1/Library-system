@@ -138,6 +138,27 @@ export const requestMyUnpaidFines = async () => {
     return res.data;
 };
 
+const apiPolicy = '/api/policy';
+export const requestGetPolicies = async () => {
+    const res = await apiClient.get(apiPolicy);
+    return res.data;
+};
+
+export const requestCreatePolicy = async (data) => {
+    const res = await apiClient.post(apiPolicy, data);
+    return res.data;
+};
+
+export const requestUpdatePolicy = async (id, data) => {
+    const res = await apiClient.put(`${apiPolicy}/${encodeURIComponent(id)}`, data);
+    return res.data;
+};
+
+export const requestDeletePolicy = async (id) => {
+    const res = await apiClient.delete(`${apiPolicy}/${encodeURIComponent(id)}`);
+    return res.data;
+};
+
 const apiProduct = '/api/product';
 export const requestGetAllProduct = async () => {
     const res = await request.get(`${apiProduct}/get-all`);
@@ -176,6 +197,11 @@ export const requestDeleteProduct = async (id) => {
 
 export const requestSyncBookCodes = async () => {
     const res = await apiClient.get(`${apiProduct}/sync-book-codes`);
+    return res.data;
+};
+
+export const requestGetBookCopies = async () => {
+    const res = await apiClient.get(`${apiProduct}/book-copies`);
     return res.data;
 };
 

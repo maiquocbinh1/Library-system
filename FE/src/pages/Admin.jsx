@@ -1,62 +1,61 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Avatar, Dropdown, Layout, Menu, Typography, message } from 'antd';
 import {
-    DashboardOutlined,
+    AuditOutlined,
+    BarcodeOutlined,
     BookOutlined,
-    TeamOutlined,
-    IdcardOutlined,
-    HistoryOutlined,
-    LogoutOutlined,
-    UserOutlined,
-    DownOutlined,
+    CheckCircleOutlined,
+    ControlOutlined,
+    DashboardOutlined,
+    DatabaseOutlined,
     DollarOutlined,
+    DownOutlined,
+    ExportOutlined,
+    IdcardOutlined,
+    LogoutOutlined,
+    PieChartOutlined,
+    SettingOutlined,
+    SolutionOutlined,
+    TeamOutlined,
+    UserOutlined,
+    UserSwitchOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import Statistics from './DashbroadComponents/Statistics';
 import BookManagement from './DashbroadComponents/BookManagement';
+import BookCopyManagement from './DashbroadComponents/BookCopyManagement';
 import UserManagement from './DashbroadComponents/UserManagement';
 import LoanRequestManagement from './DashbroadComponents/LoanRequestManagement';
 import CardIssuanceManagement from './DashbroadComponents/CardIssuanceManagement';
 import ReaderCodeManagement from './DashbroadComponents/ReaderCodeManagement';
 import FineManagement from './DashbroadComponents/FineManagement';
+import PolicyManagement from './DashbroadComponents/PolicyManagement';
 import { requestLogout } from '../config/request';
 import { useStore } from '../hooks/useStore';
+import './admin-layout.css';
 
 const { Header, Content, Sider } = Layout;
-const { Text } = Typography;
 
-const components = {
+const VIEW_COMPONENTS = {
     stats: <Statistics />,
-    user: <UserManagement />,
-    loan: <LoanRequestManagement />,
+    loan: <LoanRequestManagement presetFilter="approval" pageTitle="Phê duyệt mượn sách" />,
+    returns: <LoanRequestManagement presetFilter="returns" pageTitle="Quản lý trả sách" />,
     fines: <FineManagement />,
+    book: <BookManagement />,
+    'book-copies': <BookCopyManagement />,
     'card-codes': <ReaderCodeManagement />,
     'card-issue': <CardIssuanceManagement />,
-    book: <BookManagement />,
+    policy: <PolicyManagement />,
+    user: <UserManagement />,
 };
 
-const menuItems = [
-    { key: 'stats', icon: <DashboardOutlined />, label: 'Dashboard' },
-    { key: 'book', icon: <BookOutlined />, label: 'Quản lý sách' },
-    { key: 'loan', icon: <HistoryOutlined />, label: 'Yêu cầu mượn sách' },
-    { key: 'fines', icon: <DollarOutlined />, label: 'Quản lý Phạt' },
-    {
-        key: 'cardGroup',
-        icon: <IdcardOutlined />,
-        label: 'Quản lý mã độc giả',
-        children: [
-            { key: 'card-codes', label: 'Danh sách mã độc giả' },
-            { key: 'card-issue', label: 'Đăng ký làm thẻ' },
-        ],
-    },
-    { key: 'user', icon: <TeamOutlined />, label: 'Quản lý người dùng' },
-];
-
 function findMenuLabel(items, key) {
-    for (const item of items) {
-        if (item?.key === key) return item?.label;
+    for (const item of items || []) {
+        if (item?.key === key) {
+            return typeof item.label === 'string' ? item.label : key;
+        }
         if (Array.isArray(item?.children)) {
             const found = findMenuLabel(item.children, key);
             if (found) return found;
@@ -65,14 +64,93 @@ function findMenuLabel(items, key) {
     return null;
 }
 
+function buildMenuItems(isAdmin) {
+    const items = [
+        {
+            key: 'overview',
+            icon: <PieChartOutlined />,
+            label: 'Tổng quan',
+            children: [{ key: 'stats', icon: <DashboardOutlined />, label: 'Dashboard / Thống kê' }],
+        },
+        {
+            key: 'circulation',
+            icon: <AuditOutlined />,
+            label: 'Quản lý Lưu thông',
+            children: [
+                { key: 'loan', icon: <CheckCircleOutlined />, label: 'Phê duyệt mượn' },
+                { key: 'returns', icon: <ExportOutlined />, label: 'Quản lý Trả sách' },
+                { key: 'fines', icon: <DollarOutlined />, label: 'Quản lý Phạt' },
+            ],
+        },
+        {
+            key: 'inventory',
+            icon: <DatabaseOutlined />,
+            label: 'Quản lý Kho',
+            children: [
+                { key: 'book', icon: <BookOutlined />, label: 'Danh mục đầu sách' },
+                { key: 'book-copies', icon: <BarcodeOutlined />, label: 'Bản sao & Barcode' },
+            ],
+        },
+        {
+            key: 'patrons',
+            icon: <TeamOutlined />,
+            label: 'Quản lý Độc giả',
+            children: [
+                { key: 'card-codes', icon: <IdcardOutlined />, label: 'Hồ sơ / MSV & MSG' },
+                { key: 'card-issue', icon: <SolutionOutlined />, label: 'Đăng ký làm thẻ' },
+            ],
+        },
+    ];
+
+    if (isAdmin) {
+        items.push({
+            key: 'system',
+            icon: <SettingOutlined />,
+            label: 'Hệ thống',
+            children: [
+                { key: 'policy', icon: <ControlOutlined />, label: 'Cấu hình chính sách' },
+                { key: 'user', icon: <UserSwitchOutlined />, label: 'Tài khoản thủ thư & phân quyền' },
+            ],
+        });
+    }
+
+    return items;
+}
+
 function Admin() {
     const [selectedKey, setSelectedKey] = useState('stats');
+    const [openKeys, setOpenKeys] = useState([
+        'overview',
+        'circulation',
+        'inventory',
+        'patrons',
+        'system',
+    ]);
     const navigate = useNavigate();
     const { dataUser, refreshAuth } = useStore();
 
+    const isAdmin = String(dataUser?.role || '').toLowerCase() === 'admin';
+
+    const menuItems = useMemo(() => buildMenuItems(isAdmin), [isAdmin]);
+
+    useEffect(() => {
+        setOpenKeys(
+            isAdmin
+                ? ['overview', 'circulation', 'inventory', 'patrons', 'system']
+                : ['overview', 'circulation', 'inventory', 'patrons'],
+        );
+    }, [isAdmin]);
+
     const currentTabTitle = useMemo(() => {
         return findMenuLabel(menuItems, selectedKey) || 'Dashboard';
-    }, [selectedKey]);
+    }, [menuItems, selectedKey]);
+
+    const staffSubtitle = useMemo(() => {
+        const r = String(dataUser?.role || '').toLowerCase();
+        if (r === 'librarian') return 'Thủ thư';
+        if (r === 'admin') return 'Quản trị viên';
+        return '';
+    }, [dataUser?.role]);
 
     const handleLogout = async () => {
         try {
@@ -94,109 +172,117 @@ function Admin() {
         },
     ];
 
+    const activePane = VIEW_COMPONENTS[selectedKey] || VIEW_COMPONENTS.stats;
+
     return (
-        <Layout className="min-h-screen bg-[#f5f7fb]">
+        <Layout className="admin-layout-root" style={{ minHeight: '100vh' }}>
+            {/* Cột trái: Sidebar — không dùng position fixed để giữ đúng flex 2 cột của Ant Design */}
             <Sider
-                theme="light"
-                breakpoint="lg"
                 width={260}
+                theme="dark"
+                breakpoint="lg"
+                collapsedWidth={48}
+                className="admin-sider-navy"
                 style={{
-                    position: 'fixed',
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    height: '100vh',
+                    background: '#1a3353',
                     overflow: 'auto',
-                    borderRight: '1px solid #5b43d6',
-                    background: 'linear-gradient(180deg, #5b43d6 0%, #7b5cff 55%, #8b5cf6 100%)',
-                    zIndex: 20,
                 }}
             >
-                <div className="mx-3 my-4 rounded-xl border border-white/30 bg-white/15 px-3 py-4 text-center shadow-sm backdrop-blur-sm">
-                    <Text className="text-sm font-extrabold tracking-wide text-white">
-                        LIBRARY
-                    </Text>
+                <div
+                    className="admin-layout-logo"
+                    style={{
+                        height: 64,
+                        color: '#fff',
+                        textAlign: 'center',
+                        padding: '12px 16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                >
+                    <Typography.Text style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.75)' }}>
+                        THƯ VIỆN PTIT
+                    </Typography.Text>
+                    <Typography.Text style={{ fontSize: 14, fontWeight: 700, color: '#fff', marginTop: 4 }}>Hệ thống quản lý</Typography.Text>
                 </div>
 
                 <Menu
+                    theme="dark"
                     mode="inline"
+                    style={{ background: '#1a3353', borderInlineEnd: 'none' }}
                     items={menuItems}
                     selectedKeys={[selectedKey]}
-                    defaultOpenKeys={['cardGroup']}
-                    onClick={(event) => setSelectedKey(event.key)}
-                    className="admin-sider-menu border-e-0 px-2"
+                    openKeys={openKeys}
+                    onOpenChange={setOpenKeys}
+                    onClick={({ key }) => {
+                        if (Object.prototype.hasOwnProperty.call(VIEW_COMPONENTS, key)) {
+                            setSelectedKey(key);
+                        }
+                    }}
+                    className="admin-menu-navy"
                 />
             </Sider>
 
-            <Layout style={{ marginLeft: 260 }}>
-                <Header className="flex h-16 w-full items-center justify-between bg-white px-8 shadow-sm">
-                    <Typography.Title level={4} className="!mb-0 !text-2xl !font-bold !text-purple-700">
+            {/* Cột phải: Header + Content */}
+            <Layout className="admin-layout-main">
+                <Header
+                    className="admin-header-bar"
+                    style={{
+                        background: '#fff',
+                        padding: '0 20px',
+                        height: 64,
+                        lineHeight: '64px',
+                        boxShadow: '0 1px 4px rgba(0,21,41,.08)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                    }}
+                >
+                    <Typography.Title level={4} className="admin-page-title !mb-0 !text-xl !font-bold lg:!text-2xl" style={{ margin: 0, lineHeight: 1.3 }}>
                         {currentTabTitle}
                     </Typography.Title>
 
                     <Dropdown menu={{ items: dropdownItems }} placement="bottomRight" trigger={['click']}>
                         <button
                             type="button"
-                            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 transition-colors hover:bg-slate-50"
+                            className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5"
                         >
                             <Avatar size={34} icon={<UserOutlined />} src={dataUser?.avatar || undefined} />
                             <div className="hidden text-left sm:block">
-                                <p className="text-sm font-semibold text-slate-900">{dataUser?.fullName || 'Admin'}</p>
-                                <p className="text-xs text-slate-500">{dataUser?.email || 'admin@ptit.edu.vn'}</p>
+                                <p className="m-0 text-sm font-semibold text-slate-900">{dataUser?.fullName || 'Nhân viên'}</p>
+                                <p className="m-0 text-xs text-slate-500">{staffSubtitle || dataUser?.email}</p>
                             </div>
                             <DownOutlined className="text-xs text-slate-500" />
                         </button>
                     </Dropdown>
                 </Header>
 
-                <Content className="m-6">
-                    <div className="min-h-[calc(100vh-112px)] rounded-2xl bg-white p-6 shadow-sm">
+                <Content
+                    className="admin-content-area"
+                    style={{
+                        margin: '24px 16px',
+                        padding: 24,
+                        background: '#f0f2f5',
+                        flex: 1,
+                        overflow: 'auto',
+                    }}
+                >
+                    <div className="admin-content-inner" style={{ padding: 24, minHeight: '100%' }}>
                         <AnimatePresence mode="wait" initial={false}>
                             <motion.div
                                 key={selectedKey}
-                                initial={{ opacity: 0, y: 10, filter: 'blur(2px)' }}
-                                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                                exit={{ opacity: 0, y: -8, filter: 'blur(2px)' }}
-                                transition={{ type: 'tween', ease: [0.22, 1, 0.36, 1], duration: 0.22 }}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -6 }}
+                                transition={{ type: 'tween', ease: [0.22, 1, 0.36, 1], duration: 0.2 }}
                             >
-                                {components[selectedKey] || components['card-codes']}
+                                {activePane}
                             </motion.div>
                         </AnimatePresence>
                     </div>
                 </Content>
             </Layout>
-
-            <style>{`
-                .admin-sider-menu {
-                    background: transparent !important;
-                }
-                .admin-sider-menu .ant-menu-item {
-                    border-radius: 10px;
-                    margin-inline: 0 !important;
-                    margin-block: 4px;
-                    height: 44px;
-                    line-height: 44px;
-                    font-weight: 600;
-                    color: rgba(255, 255, 255, 0.92);
-                }
-                .admin-sider-menu .ant-menu-item .ant-menu-item-icon {
-                    color: rgba(255, 255, 255, 0.9);
-                }
-                .admin-sider-menu .ant-menu-item-selected {
-                    background: rgba(255, 255, 255, 0.22) !important;
-                    color: #ffffff !important;
-                }
-                .admin-sider-menu .ant-menu-item-selected .ant-menu-item-icon {
-                    color: #ffffff !important;
-                }
-                .admin-sider-menu .ant-menu-item:hover {
-                    background: rgba(255, 255, 255, 0.14) !important;
-                    color: #ffffff !important;
-                }
-                .admin-sider-menu .ant-menu-item:hover .ant-menu-item-icon {
-                    color: #ffffff !important;
-                }
-            `}</style>
         </Layout>
     );
 }
