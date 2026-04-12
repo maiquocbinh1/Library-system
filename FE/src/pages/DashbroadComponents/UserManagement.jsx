@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Table, Button, Input, Modal, Form, Select, message, Space } from 'antd';
 import { IdcardOutlined } from '@ant-design/icons';
 import { requestDeleteUser, requestGetAllUsers, requestIssueReaderCard, requestUpdatePassword, requestUpdateUserAdmin } from '../../config/request';
+import { READER_TYPE_OPTIONS } from '../../constants/readerTypes';
 
 const { Search } = Input;
 
@@ -23,7 +24,7 @@ const UserManagement = () => {
         { title: 'Email', dataIndex: 'email', key: 'email' },
         { title: 'Vai trò', dataIndex: 'role', key: 'role' },
         {
-            // Align header above the "Cấp thẻ" button (not the right-most "Xóa")
+            // Align header above the "Kích hoạt" button (not the right-most "Xóa")
             title: (
                 <div className="w-full text-right" style={{ paddingRight: 37 }}>
                     Hành động
@@ -62,7 +63,7 @@ const UserManagement = () => {
                             }}
                             className="rounded-xl"
                         >
-                            Cấp thẻ
+                            Kích hoạt
                         </Button>
                         <Button
                             type="primary"
@@ -143,14 +144,14 @@ const UserManagement = () => {
                 readerCode: String(values.readerCode || '').trim(),
                 readerType: values.readerType || 'SinhVien_ChinhQuy',
             });
-            message.success('Cấp thẻ độc giả thành công');
+            message.success('Đã kích hoạt độc giả thành công');
             setIsCardModalVisible(false);
             setSelectedUserForCard(null);
             cardForm.resetFields();
             fetchData();
         } catch (error) {
             if (error?.errorFields) return;
-            message.error(error?.response?.data?.message || 'Không thể cấp thẻ');
+            message.error(error?.response?.data?.message || 'Không thể kích hoạt');
         } finally {
             setLoading(false);
         }
@@ -216,14 +217,14 @@ const UserManagement = () => {
             </Modal>
 
             <Modal
-                title="Đăng ký thẻ độc giả"
+                title="Kích hoạt tài khoản Độc giả"
                 open={isCardModalVisible}
                 onOk={handleIssueCard}
                 onCancel={() => {
                     setIsCardModalVisible(false);
                     setSelectedUserForCard(null);
                 }}
-                okText="Đăng ký"
+                okText="Xác nhận Kích hoạt"
                 cancelText="Hủy"
                 confirmLoading={loading}
             >
@@ -240,27 +241,20 @@ const UserManagement = () => {
                         name="readerType"
                         rules={[{ required: true, message: 'Vui lòng chọn loại bạn đọc!' }]}
                     >
-                        <Select
-                            className="rounded-xl"
-                            options={[
-                                { value: 'SinhVien_ChinhQuy', label: 'Sinh viên chính quy' },
-                                { value: 'HocVien_NCS', label: 'Học viên / NCS' },
-                                { value: 'GiangVien_CanBo', label: 'Giảng viên / Cán bộ' },
-                            ]}
-                        />
+                        <Select className="rounded-xl" options={READER_TYPE_OPTIONS} />
                     </Form.Item>
 
                     <Form.Item
-                        label="Loại thẻ / Thời hạn"
+                        label="Thời hạn kích hoạt (tháng)"
                         name="planMonths"
-                        rules={[{ required: true, message: 'Vui lòng chọn gói thẻ!' }]}
+                        rules={[{ required: true, message: 'Vui lòng chọn thời hạn kích hoạt!' }]}
                     >
                         <Select
                             className="rounded-xl"
                             options={[
-                                { value: 3, label: 'Gói 3 tháng' },
-                                { value: 6, label: 'Gói 6 tháng' },
-                                { value: 12, label: 'Gói 1 năm' },
+                                { value: 3, label: '3 tháng' },
+                                { value: 6, label: '6 tháng' },
+                                { value: 12, label: '12 tháng (1 năm)' },
                             ]}
                         />
                     </Form.Item>

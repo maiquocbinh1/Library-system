@@ -14,10 +14,10 @@ const userMongoSchema = new mongoose.Schema(
         role: { type: String, enum: ['admin', 'user', 'librarian'], default: 'user' },
         typeLogin: { type: String, enum: ['google', 'email'], required: true },
 
-        /** MSV — sparse unique để có thể null khi dùng MSG */
-        studentId: { type: String, default: null, trim: true, sparse: true, unique: true },
+        /** MSV — sparse unique (không default null để tránh trùng index khi nhiều doc không có MSV) */
+        studentId: { type: String, trim: true, sparse: true, unique: true },
         /** MSG — sparse unique */
-        staffId: { type: String, default: null, trim: true, sparse: true, unique: true },
+        staffId: { type: String, trim: true, sparse: true, unique: true },
         /** Trường cũ: đồng bộ với MSV khi còn dữ liệu legacy; không dùng làm nghiệp vụ mới */
         idStudent: { type: String, default: null },
 

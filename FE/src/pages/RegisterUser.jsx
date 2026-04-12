@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { requestRegister } from '../config/request';
+import { READER_TYPE_OPTIONS } from '../constants/readerTypes';
 import { toast } from 'react-toastify';
 import imagesLogin from '../assets/images/login-library.png';
 
@@ -142,14 +143,7 @@ function RegisterUser() {
                                         label="Loại bạn đọc"
                                         rules={[{ required: true, message: 'Vui lòng chọn loại bạn đọc' }]}
                                     >
-                                        <Select
-                                            placeholder="Chọn loại"
-                                            options={[
-                                                { value: 'SinhVien_ChinhQuy', label: 'Sinh viên chính quy' },
-                                                { value: 'HocVien_NCS', label: 'Học viên / NCS' },
-                                                { value: 'GiangVien_CanBo', label: 'Giảng viên / Cán bộ' },
-                                            ]}
-                                        />
+                                        <Select placeholder="Chọn loại" options={READER_TYPE_OPTIONS} />
                                     </Form.Item>
 
                                     <Form.Item

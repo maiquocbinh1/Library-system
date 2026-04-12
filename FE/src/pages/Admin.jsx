@@ -11,7 +11,6 @@ import {
     DollarOutlined,
     DownOutlined,
     ExportOutlined,
-    IdcardOutlined,
     LogoutOutlined,
     PieChartOutlined,
     SettingOutlined,
@@ -29,7 +28,6 @@ import BookCopyManagement from './DashbroadComponents/BookCopyManagement';
 import UserManagement from './DashbroadComponents/UserManagement';
 import LoanRequestManagement from './DashbroadComponents/LoanRequestManagement';
 import CardIssuanceManagement from './DashbroadComponents/CardIssuanceManagement';
-import ReaderCodeManagement from './DashbroadComponents/ReaderCodeManagement';
 import FineManagement from './DashbroadComponents/FineManagement';
 import PolicyManagement from './DashbroadComponents/PolicyManagement';
 import { requestLogout } from '../config/request';
@@ -45,7 +43,7 @@ const VIEW_COMPONENTS = {
     fines: <FineManagement />,
     book: <BookManagement />,
     'book-copies': <BookCopyManagement />,
-    'card-codes': <ReaderCodeManagement />,
+    'patron-profiles': <UserManagement />,
     'card-issue': <CardIssuanceManagement />,
     policy: <PolicyManagement />,
     user: <UserManagement />,
@@ -93,11 +91,11 @@ function buildMenuItems(isAdmin) {
         },
         {
             key: 'patrons',
-            icon: <TeamOutlined />,
+            icon: <UserOutlined />,
             label: 'Quản lý Độc giả',
             children: [
-                { key: 'card-codes', icon: <IdcardOutlined />, label: 'Hồ sơ / MSV & MSG' },
-                { key: 'card-issue', icon: <SolutionOutlined />, label: 'Đăng ký làm thẻ' },
+                { key: 'patron-profiles', icon: <TeamOutlined />, label: 'Hồ sơ Độc giả' },
+                { key: 'card-issue', icon: <SolutionOutlined />, label: 'Kích hoạt Độc giả' },
             ],
         },
     ];

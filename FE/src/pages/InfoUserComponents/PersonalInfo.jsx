@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Avatar, Descriptions, Button, Spin, message, Form, Input, Upload } from 'antd';
 import { UserOutlined, EditOutlined, UploadOutlined } from '@ant-design/icons';
-import { requestReaderCode, requestUpdateUser, requestUploadImage } from '../../config/request';
+import { requestIdStudent, requestUpdateUser, requestUploadImage } from '../../config/request';
 import { toast } from 'react-toastify';
 import { useStore } from '../../hooks/useStore';
 
@@ -25,7 +25,7 @@ const PersonalInfo = () => {
 
     const handleRequestReaderCode = async () => {
         try {
-            const res = await requestReaderCode();
+            const res = await requestIdStudent();
             await refreshAuth();
             toast.success(res.message);
         } catch (error) {
