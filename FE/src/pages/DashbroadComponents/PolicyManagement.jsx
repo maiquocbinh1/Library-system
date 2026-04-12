@@ -2,12 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Table, Button, Modal, Form, InputNumber, Select, message, Popconfirm, Tag } from 'antd';
 import { EditOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { requestCreatePolicy, requestDeletePolicy, requestGetPolicies, requestUpdatePolicy } from '../../config/request';
-
-const READER_OPTIONS = [
-    { value: 'SinhVien_ChinhQuy', label: 'Sinh viên chính quy' },
-    { value: 'GiangVien_CanBo', label: 'Giảng viên / Cán bộ' },
-    { value: 'HocVien_NCS', label: 'Học viên / NCS' },
-];
+import { READER_TYPE_OPTIONS, readerTypeLabel } from '../../constants/readerTypes';
 
 const PolicyManagement = () => {
     const [data, setData] = useState([]);
@@ -103,7 +98,7 @@ const PolicyManagement = () => {
             title: 'Đối tượng',
             dataIndex: 'readerType',
             key: 'readerType',
-            render: (v) => <Tag color="blue">{READER_OPTIONS.find((o) => o.value === v)?.label || v}</Tag>,
+            render: (v) => <Tag color="blue">{readerTypeLabel(v)}</Tag>,
         },
         { title: 'Tối đa mượn', dataIndex: 'maxBooks', key: 'maxBooks', width: 120 },
         { title: 'Số ngày mượn', dataIndex: 'loanDays', key: 'loanDays', width: 130 },
@@ -171,7 +166,7 @@ const PolicyManagement = () => {
                         label="Loại bạn đọc"
                         rules={[{ required: true, message: 'Chọn loại' }]}
                     >
-                        <Select options={READER_OPTIONS} disabled={!creating} className="rounded-lg" />
+                        <Select options={READER_TYPE_OPTIONS} disabled={!creating} className="rounded-lg" />
                     </Form.Item>
                     <Form.Item name="maxBooks" label="Số ấn phẩm tối đa" rules={[{ required: true }]}>
                         <InputNumber min={1} className="w-full" />

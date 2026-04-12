@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Form, Input, message, Select, DatePicker, Radio, Card } from 'antd';
 import dayjs from 'dayjs';
 import { requestAdminCreateReader, requestIssueReaderCard } from '../../config/request';
+import { READER_TYPE_OPTIONS } from '../../constants/readerTypes';
 
 const CardIssuanceManagement = () => {
     const [loading, setLoading] = useState(false);
@@ -86,10 +87,10 @@ const CardIssuanceManagement = () => {
                 systemType: values.systemType,
                 issuedAt: values.issuedAt ? values.issuedAt.toISOString() : null,
             });
-            message.success('Đã đăng ký thẻ độc giả');
+            message.success('Đã kích hoạt tài khoản độc giả');
             handleResetForm();
         } catch (error) {
-            message.error(error?.response?.data?.message || 'Đăng ký thẻ thất bại');
+            message.error(error?.response?.data?.message || 'Kích hoạt thất bại');
         } finally {
             setLoading(false);
         }
@@ -97,16 +98,16 @@ const CardIssuanceManagement = () => {
 
     const planOptions = useMemo(
         () => [
-            { value: 3, label: 'Gói 3 tháng' },
-            { value: 6, label: 'Gói 6 tháng' },
-            { value: 12, label: 'Gói 1 năm' },
+            { value: 3, label: '3 tháng' },
+            { value: 6, label: '6 tháng' },
+            { value: 12, label: '12 tháng (1 năm)' },
         ],
         [],
     );
 
     return (
         <div>
-            <h2 className="text-2xl mb-4 font-bold">Đăng ký làm thẻ (Cấp độc giả)</h2>
+            <h2 className="text-2xl mb-4 font-bold">Kích hoạt tài khoản Độc giả</h2>
             <Card className="mb-4 rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
                 <Form
                     form={form}
@@ -139,14 +140,7 @@ const CardIssuanceManagement = () => {
                             name="readerType"
                             rules={[{ required: true, message: 'Vui lòng chọn loại bạn đọc!' }]}
                         >
-                            <Select
-                                className="rounded-xl"
-                                options={[
-                                    { value: 'SinhVien_ChinhQuy', label: 'Sinh viên chính quy' },
-                                    { value: 'HocVien_NCS', label: 'Học viên / NCS' },
-                                    { value: 'GiangVien_CanBo', label: 'Giảng viên / Cán bộ' },
-                                ]}
-                            />
+                            <Select className="rounded-xl" options={READER_TYPE_OPTIONS} />
                         </Form.Item>
 
                         <Form.Item
@@ -209,14 +203,18 @@ const CardIssuanceManagement = () => {
                                 <Radio value="military">Quốc tế</Radio>
                             </Radio.Group>
                         </Form.Item>
-                        <Form.Item label="Loại thẻ / Thời hạn" name="planMonths" rules={[{ required: true, message: 'Vui lòng chọn gói thẻ!' }]}>
+                        <Form.Item
+                            label="Thời hạn kích hoạt (tháng)"
+                            name="planMonths"
+                            rules={[{ required: true, message: 'Vui lòng chọn thời hạn kích hoạt!' }]}
+                        >
                             <Select className="rounded-xl" options={planOptions} />
                         </Form.Item>
 
-                        <Form.Item label="Ngày làm thẻ" name="issuedAt" rules={[{ required: true, message: 'Vui lòng chọn ngày làm thẻ!' }]}>
+                        <Form.Item label="Ngày bắt đầu hiệu lực" name="issuedAt" rules={[{ required: true, message: 'Vui lòng chọn ngày!' }]}>
                             <DatePicker className="w-full rounded-xl" format="DD/MM/YYYY" />
                         </Form.Item>
-                        <Form.Item label="Ngày hết hạn thẻ" name="expiresAt">
+                        <Form.Item label="Ngày hết hạn hiệu lực" name="expiresAt">
                             <DatePicker className="w-full rounded-xl" format="DD/MM/YYYY" disabled />
                         </Form.Item>
                     </div>
@@ -226,7 +224,7 @@ const CardIssuanceManagement = () => {
                             Làm lại
                         </Button>
                         <Button type="primary" onClick={handleSubmitForm} loading={loading} className="rounded-xl">
-                            Đăng ký
+                            Xác nhận Kích hoạt
                         </Button>
                     </div>
                 </Form>
