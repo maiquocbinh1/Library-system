@@ -55,6 +55,7 @@ const UserManagement = () => {
                                     fullName: record.fullName,
                                     email: record.email,
                                     planMonths: 3,
+                                    readerType: 'SinhVien_ChinhQuy',
                                     readerCode: '',
                                 });
                                 setIsCardModalVisible(true);
@@ -140,6 +141,7 @@ const UserManagement = () => {
                 userId: selectedUserForCard?.id,
                 planMonths: values.planMonths,
                 readerCode: String(values.readerCode || '').trim(),
+                readerType: values.readerType || 'SinhVien_ChinhQuy',
             });
             message.success('Cấp thẻ độc giả thành công');
             setIsCardModalVisible(false);
@@ -233,6 +235,21 @@ const UserManagement = () => {
                     </Form.Item>
 
                     <Form.Item
+                        label="Loại bạn đọc"
+                        name="readerType"
+                        rules={[{ required: true, message: 'Vui lòng chọn loại bạn đọc!' }]}
+                    >
+                        <Select
+                            className="rounded-xl"
+                            options={[
+                                { value: 'SinhVien_ChinhQuy', label: 'Sinh viên chính quy' },
+                                { value: 'HocVien_NCS', label: 'Học viên / NCS' },
+                                { value: 'GiangVien_CanBo', label: 'Giảng viên / Cán bộ' },
+                            ]}
+                        />
+                    </Form.Item>
+
+                    <Form.Item
                         label="Loại thẻ / Thời hạn"
                         name="planMonths"
                         rules={[{ required: true, message: 'Vui lòng chọn gói thẻ!' }]}
@@ -248,19 +265,19 @@ const UserManagement = () => {
                     </Form.Item>
 
                     <Form.Item
-                        label="Mã thẻ"
+                        label="MSV / MSG"
                         name="readerCode"
-                        rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập mã thẻ!' }]}
+                        rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập MSV hoặc MSG!' }]}
                     >
                         <Input
                             className="rounded-xl"
-                            placeholder="Nhập mã thẻ (ví dụ DG0001)"
+                            placeholder="Mã sinh viên hoặc mã giảng viên/cán bộ"
                             addonAfter={
                                 <Button
                                     type="link"
                                     className="px-0"
                                     onClick={() => {
-                                        const code = `DG${Math.floor(100000 + Math.random() * 900000)}`;
+                                        const code = `PTIT${Math.floor(100000 + Math.random() * 900000)}`;
                                         cardForm.setFieldsValue({ readerCode: code });
                                     }}
                                 >

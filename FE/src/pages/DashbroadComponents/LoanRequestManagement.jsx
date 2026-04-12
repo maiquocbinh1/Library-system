@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Table, Button, Tag, Card, Form, Input, InputNumber, message } from 'antd';
-import { requestGetAllHistoryBook, requestUpdateStatusBook } from '../../config/request';
+import { Table, Button, Tag, Card, Form, Input, InputNumber, message, notification, Popconfirm, Space } from 'antd';
+import { requestGetAllHistoryBook, requestReturnBooks, requestUpdateStatusBook } from '../../config/request';
 import dayjs from 'dayjs';
+import { isBorrowingActive, isPendingApproval, loanStatusMeta } from '../../utils/loanTicketStatus';
 
 const LoanRequestManagement = () => {
     const [data, setData] = useState([]);
@@ -58,6 +59,35 @@ const LoanRequestManagement = () => {
         }
     };
 
+    const handleReturnBooks = async (record) => {
+        try {
+            setLoading(true);
+            const res = await requestReturnBooks({ loanTicketId: record.id });
+            const meta = res?.metadata;
+            if (meta?.fine && Number(meta.fine.fineAmount) > 0) {
+                notification.warning({
+                    message: 'Trả sách thành công',
+                    description: `Độc giả trễ hạn ${meta.overdueDays} ngày, phát sinh phiếu phạt ${Number(meta.fine.fineAmount).toLocaleString('vi-VN')} VNĐ.`,
+                    duration: 10,
+                    placement: 'topRight',
+                });
+            } else {
+                notification.success({
+                    message: 'Trả sách thành công',
+                    description: 'Đã xác nhận nhận sách về thư viện (đúng hạn hoặc không phát sinh phạt).',
+                    placement: 'topRight',
+                });
+            }
+            setSelectedRequest(null);
+            detailForm.resetFields();
+            await fetchData();
+        } catch (error) {
+            message.error(error?.response?.data?.message || 'Không thể xác nhận trả sách');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
         if (!selectedRequest) {
             detailForm.resetFields();
@@ -77,17 +107,21 @@ const LoanRequestManagement = () => {
             fullName: selectedRequest.fullName || '',
             bookName: selectedRequest?.product?.nameProduct || '',
             quantity: Number(selectedRequest.quantity || 1),
-            borrowDate: selectedRequest.borrowDate ? dayjs(selectedRequest.borrowDate).format('DD/MM/YYYY') : '',
-            returnDate: selectedRequest.returnDate ? dayjs(selectedRequest.returnDate).format('DD/MM/YYYY') : '',
+            borrowDate: selectedRequest.borrowDate && dayjs(selectedRequest.borrowDate).isValid()
+                ? dayjs(selectedRequest.borrowDate).format('DD/MM/YYYY')
+                : '',
+            returnDate:
+                selectedRequest.returnDate && dayjs(selectedRequest.returnDate).isValid()
+                    ? dayjs(selectedRequest.returnDate).format('DD/MM/YYYY')
+                    : '',
             status: selectedRequest.status || '',
         });
     }, [selectedRequest, detailForm]);
 
     const statusTag = useMemo(() => {
         const status = selectedRequest?.status;
-        const color = status === 'pending' ? 'green' : status === 'success' ? 'geekblue' : 'volcano';
-        const text = status === 'pending' ? 'Chờ duyệt' : status === 'success' ? 'Đã duyệt' : status ? 'Từ chối' : 'Chưa chọn';
-        return <Tag color={status ? color : 'default'}>{text}</Tag>;
+        const { color, text } = loanStatusMeta(status);
+        return <Tag color={status ? color : 'default'}>{status ? text : 'Chưa chọn'}</Tag>;
     }, [selectedRequest]);
 
     const columns = [
@@ -111,51 +145,59 @@ const LoanRequestManagement = () => {
             title: 'Ngày mượn',
             dataIndex: 'borrowDate',
             key: 'borrowDate',
-            render: (text) => dayjs(text).format('DD/MM/YYYY'),
+            render: (text) => (text && dayjs(text).isValid() ? dayjs(text).format('DD/MM/YYYY') : '—'),
         },
         {
-            title: 'Ngày trả',
+            title: 'Hạn trả',
             dataIndex: 'returnDate',
             key: 'returnDate',
-            render: (text) => dayjs(text).format('DD/MM/YYYY'),
+            render: (text) => (text && dayjs(text).isValid() ? dayjs(text).format('DD/MM/YYYY') : '—'),
         },
         {
             title: 'Trạng thái',
             key: 'status',
             dataIndex: 'status',
             render: (status) => {
-                let color = status === 'pending' ? 'green' : status === 'success' ? 'geekblue' : 'volcano';
-                return (
-                    <Tag color={color}>
-                        {status === 'pending' ? 'Chờ duyệt' : status === 'success' ? 'Đã duyệt' : 'Từ chối'}
-                    </Tag>
-                );
+                const { color, text } = loanStatusMeta(status);
+                return <Tag color={color}>{text}</Tag>;
             },
         },
         {
             title: 'Hành động',
             key: 'action',
+            width: 320,
             render: (text, record) => (
-                <span>
-                    {record.status === 'pending' && (
-                        <Button
-                            onClick={() => handleUpdateStatus(record.id, 'success', record.product?.id, record.userId)}
-                            type="primary"
-                        >
-                            Duyệt
-                        </Button>
+                <Space wrap size="small" onClick={(e) => e.stopPropagation()}>
+                    {isPendingApproval(record.status) && (
+                        <>
+                            <Button
+                                onClick={() => handleUpdateStatus(record.id, 'success', record.product?.id, record.userId)}
+                                type="primary"
+                            >
+                                Duyệt
+                            </Button>
+                            <Button
+                                onClick={() => handleUpdateStatus(record.id, 'cancel', record.product?.id, record.userId)}
+                                type="primary"
+                                danger
+                            >
+                                Từ chối
+                            </Button>
+                        </>
                     )}
-                    {record.status === 'pending' && (
-                        <Button
-                            onClick={() => handleUpdateStatus(record.id, 'cancel', record.product?.id, record.userId)}
-                            type="primary"
-                            danger
+                    {isBorrowingActive(record.status) && (
+                        <Popconfirm
+                            title="Xác nhận đã nhận đủ sách vật lý từ độc giả?"
+                            okText="Trả sách"
+                            cancelText="Đóng"
+                            onConfirm={() => handleReturnBooks(record)}
                         >
-                            {' '}
-                            Từ chối
-                        </Button>
+                            <Button type="default" className="border-emerald-600 text-emerald-700">
+                                Xác nhận Trả sách
+                            </Button>
+                        </Popconfirm>
                     )}
-                </span>
+                </Space>
             ),
         },
     ];
@@ -225,8 +267,8 @@ const LoanRequestManagement = () => {
                                 <Form.Item label="Ngày mượn" name="borrowDate">
                                     <Input disabled className="rounded-xl" />
                                 </Form.Item>
-                                <Form.Item label="Ngày trả" name="returnDate">
-                                    <Input disabled className="rounded-xl" />
+                                <Form.Item label="Hạn trả" name="returnDate">
+                                    <Input disabled className="rounded-xl" placeholder="Sau khi duyệt (theo nội quy)" />
                                 </Form.Item>
                             </div>
 
@@ -234,7 +276,7 @@ const LoanRequestManagement = () => {
                                 <Button
                                     type="primary"
                                     className="h-10 rounded-xl shadow-sm"
-                                    disabled={!selectedRequest || selectedRequest.status !== 'pending'}
+                                    disabled={!selectedRequest || !isPendingApproval(selectedRequest.status)}
                                     loading={loading}
                                     onClick={() =>
                                         handleUpdateStatus(selectedRequest.id, 'success', selectedRequest.product?.id, selectedRequest.userId)
@@ -245,7 +287,7 @@ const LoanRequestManagement = () => {
                                 <Button
                                     danger
                                     className="h-10 rounded-xl shadow-sm"
-                                    disabled={!selectedRequest || selectedRequest.status !== 'pending'}
+                                    disabled={!selectedRequest || !isPendingApproval(selectedRequest.status)}
                                     loading={loading}
                                     onClick={() =>
                                         handleUpdateStatus(selectedRequest.id, 'cancel', selectedRequest.product?.id, selectedRequest.userId)
@@ -253,6 +295,18 @@ const LoanRequestManagement = () => {
                                 >
                                     Từ chối
                                 </Button>
+                                {selectedRequest && isBorrowingActive(selectedRequest.status) && (
+                                    <Popconfirm
+                                        title="Xác nhận đã nhận đủ sách vật lý từ độc giả?"
+                                        okText="Trả sách"
+                                        cancelText="Đóng"
+                                        onConfirm={() => handleReturnBooks(selectedRequest)}
+                                    >
+                                        <Button className="h-10 rounded-xl border-emerald-600 text-emerald-700 shadow-sm" loading={loading}>
+                                            Xác nhận Trả sách
+                                        </Button>
+                                    </Popconfirm>
+                                )}
                                 <Button
                                     className="h-10 rounded-xl shadow-sm"
                                     disabled={!selectedRequest}

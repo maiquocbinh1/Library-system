@@ -6,7 +6,7 @@ import { requestGetOneProduct } from '../config/request';
 import { useState } from 'react';
 import { message } from 'antd';
 
-import ModalBorrowBook from '../components/ModalBuyBook';
+import ModalBorrowBook from '../components/ModalBorrowBook';
 import { useStore } from '../hooks/useStore';
 
 function DetailProduct() {
@@ -34,6 +34,7 @@ function DetailProduct() {
 
         return {
             ...product,
+            nameProduct: product.nameProduct || product.title,
             id: product.id || product.mysqlId || (product._id ? String(product._id) : undefined),
             publishYear,
             pages,
@@ -94,7 +95,7 @@ function DetailProduct() {
                             <div className="w-full max-w-xs">
                                 <img
                                     src={productImageSrc}
-                                    alt={dataProduct.nameProduct}
+                                    alt={dataProduct.nameProduct || dataProduct.title}
                                     className="w-full h-auto rounded-lg shadow-md"
                                     onError={(e) => {
                                         e.currentTarget.src = '/placeholder-book.png';
@@ -105,7 +106,9 @@ function DetailProduct() {
 
                         <div className="space-y-6">
                             <div>
-                                <h1 className="text-2xl font-bold text-gray-900 mb-2">{dataProduct.nameProduct}</h1>
+                                <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                                    {dataProduct.nameProduct || dataProduct.title}
+                                </h1>
                             </div>
 
                             <div className="bg-gray-50 p-4 rounded-lg">

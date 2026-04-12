@@ -11,9 +11,16 @@ const { OK } = require('../core/success.response');
 const UserMongo = require('../models/user.mongo.model');
 const ApiKeyMongo = require('../models/apiKey.mongo.model');
 const OtpMongo = require('../models/otp.mongo.model');
-const ReaderCodeMongo = require('../models/readerCode.mongo.model');
-const ProductMongo = require('../models/product.mongo.model');
-const HistoryBookMongo = require('../models/historyBook.mongo.model');
+const BookMongo = require('../models/book.mongo.model');
+const BookCopyMongo = require('../models/bookCopy.mongo.model');
+const {
+    READER_TYPES,
+    normalizeCode,
+    getPatronCodeString,
+    assignPatronCodeToUser,
+} = require('../utils/patronUser');
+const LoanTicketMongo = require('../models/loanTicket.mongo.model');
+const FineTicketMongo = require('../models/fineTicket.mongo.model');
 const sendMailForgotPassword = require('../utils/sendMailForgotPassword');
 const dayjs = require('dayjs');
 
@@ -114,23 +121,74 @@ async function verifyUserToken(token) {
     return jwt.verify(token, apiKey.publicKey, { algorithms: ['RS256'] });
 }
 
+function buildReaderCardView(u) {
+    if (!u) return null;
+    const raw = u.toObject ? u.toObject() : u;
+    const code = getPatronCodeString(raw);
+    return {
+        readerCode: code,
+        birthDate: raw.birthDate ?? null,
+        className: raw.className ?? null,
+        gender: raw.gender ?? null,
+        planMonths: raw.cardPlanMonths ?? null,
+        issuedAt: raw.libraryCardIssuedAt ?? null,
+        expiresAt: raw.libraryCardExpiresAt ?? null,
+        roleType: raw.readerType === 'GiangVien_CanBo' ? 'lecturer' : 'student',
+        systemType: raw.cardSystemType ?? null,
+        status: raw.verificationStatus ?? 'none',
+    };
+}
+
 function toSafeUser(user) {
     if (!user) return null;
+    const raw = user.toObject ? user.toObject() : user;
+    const patron = getPatronCodeString(raw);
     return {
-        id: String(user._id),
-        mysqlId: user.mysqlId,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        typeLogin: user.typeLogin,
-        phone: user.phone,
-        address: user.address,
+        id: String(raw._id),
+        mysqlId: raw.mysqlId,
+        fullName: raw.fullName,
+        email: raw.email,
+        role: raw.role,
+        typeLogin: raw.typeLogin,
+        phone: raw.phone,
+        address: raw.address,
+        studentId: raw.studentId || null,
+        staffId: raw.staffId || null,
+        readerType: raw.readerType || null,
+        verificationStatus: raw.verificationStatus || 'none',
+        readerCode: patron,
+        idStudent: patron,
     };
+}
+
+async function assertPatronIdsAvailable({ studentId, staffId, readerType, excludeUserId }) {
+    const sid = normalizeCode(studentId);
+    const stid = normalizeCode(staffId);
+    if (!readerType || !READER_TYPES.includes(readerType)) {
+        throw new BadRequestError('Loại bạn đọc không hợp lệ');
+    }
+    if (readerType === 'GiangVien_CanBo') {
+        if (!stid || sid) {
+            throw new BadRequestError('Giảng viên/cán bộ vui lòng nhập MSG (không dùng MSV)');
+        }
+    } else if (!sid || stid) {
+        throw new BadRequestError('Sinh viên/học viên/NCS vui lòng nhập MSV (không dùng MSG)');
+    }
+    const dupQ = { $or: [] };
+    if (sid) dupQ.$or.push({ studentId: sid });
+    if (stid) dupQ.$or.push({ staffId: stid });
+    if (excludeUserId) {
+        dupQ._id = { $ne: excludeUserId };
+    }
+    const dup = await UserMongo.findOne(dupQ);
+    if (dup) {
+        throw new BadRequestError('MSV hoặc MSG đã tồn tại');
+    }
 }
 
 class controllerUser {
     async adminCreateReader(req, res) {
-        const { fullName, phone, address, email } = req.body;
+        const { fullName, phone, address, email, readerType, studentId, staffId } = req.body;
         if (!fullName || !phone || !email) {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
@@ -140,10 +198,11 @@ class controllerUser {
             throw new BadRequestError('Email đã tồn tại');
         }
 
-        // Create without changing current admin session cookies
+        await assertPatronIdsAvailable({ studentId, staffId, readerType });
+
         const passwordPlain = random36() + random36();
         const passwordHash = bcrypt.hashSync(passwordPlain, bcrypt.genSaltSync(10));
-        const dataUser = await UserMongo.create({
+        const payload = {
             mysqlId: random36(),
             fullName,
             phone,
@@ -152,7 +211,18 @@ class controllerUser {
             password: passwordHash,
             typeLogin: 'email',
             role: 'user',
-        });
+            readerType,
+            verificationStatus: 'verified',
+        };
+        if (readerType === 'GiangVien_CanBo') {
+            payload.staffId = normalizeCode(staffId);
+            payload.studentId = null;
+        } else {
+            payload.studentId = normalizeCode(studentId);
+            payload.staffId = null;
+        }
+
+        const dataUser = await UserMongo.create(payload);
 
         const userId = String(dataUser._id);
         await createApiKey(userId);
@@ -160,7 +230,7 @@ class controllerUser {
         new OK({ message: 'Tạo độc giả thành công', metadata: { id: userId, user: toSafeUser(dataUser) } }).send(res);
     }
     async registerUser(req, res) {
-        const { fullName, phone, address, email, password } = req.body;
+        const { fullName, phone, address, email, password, readerType, studentId, staffId } = req.body;
         if (!fullName || !phone || !email || !password) {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
@@ -170,8 +240,10 @@ class controllerUser {
             throw new BadRequestError('Email đã tồn tại');
         }
 
+        await assertPatronIdsAvailable({ studentId, staffId, readerType });
+
         const passwordHash = bcrypt.hashSync(password, bcrypt.genSaltSync(10));
-        const dataUser = await UserMongo.create({
+        const payload = {
             mysqlId: random36(),
             fullName,
             phone,
@@ -180,7 +252,18 @@ class controllerUser {
             password: passwordHash,
             typeLogin: 'email',
             role: 'user',
-        });
+            readerType,
+            verificationStatus: 'verified',
+        };
+        if (readerType === 'GiangVien_CanBo') {
+            payload.staffId = normalizeCode(staffId);
+            payload.studentId = null;
+        } else {
+            payload.studentId = normalizeCode(studentId);
+            payload.staffId = null;
+        }
+
+        const dataUser = await UserMongo.create(payload);
 
         const userId = String(dataUser._id);
         await createApiKey(userId);
@@ -262,7 +345,7 @@ class controllerUser {
 
     async updateInfoUser(req, res) {
         const { id } = req.user;
-        const { fullName, address, phone } = req.body;
+        const { fullName, address, phone, readerType, studentId, staffId } = req.body;
         const user = await findUserByAnyId(id);
         if (!user) {
             throw new BadRequestError('Không tìm thấy tài khoản');
@@ -277,6 +360,19 @@ class controllerUser {
         user.address = address ?? user.address;
         user.phone = phone ?? user.phone;
         user.avatar = image;
+
+        const sid = normalizeCode(studentId);
+        const stid = normalizeCode(staffId);
+        const wantsPatron = (sid || stid) && readerType;
+        if (wantsPatron) {
+            if (user.studentId || user.staffId) {
+                throw new BadRequestError('MSV/MSG đã được gán, không thể đổi qua form này');
+            }
+            await assertPatronIdsAvailable({ studentId, staffId, readerType, excludeUserId: user._id });
+            assignPatronCodeToUser(user, sid || stid, readerType);
+            user.verificationStatus = 'verified';
+        }
+
         await user.save();
 
         new OK({ message: 'Cập nhật thông tin tài khoản thành cong' }).send(res);
@@ -388,16 +484,14 @@ class controllerUser {
     async getUsers(req, res) {
         const users = await UserMongo.find({}, { password: 0 }).sort({ createdAt: -1 }).lean();
 
-        const userIds = users.map((u) => String(u?._id)).filter(Boolean);
-        const cards = await ReaderCodeMongo.find({ userId: { $in: userIds } }).lean();
-        const cardByUserId = new Map(cards.map((c) => [String(c.userId), c]));
-
         const enriched = users.map((u) => {
             const userId = String(u?._id);
+            const readerCode = getPatronCodeString(u);
             return {
                 ...u,
                 id: userId,
-                readerCard: cardByUserId.get(userId) || null,
+                readerCode,
+                readerCard: buildReaderCardView(u),
             };
         });
 
@@ -451,9 +545,9 @@ class controllerUser {
 
         const userIdCandidates = [String(user._id)];
         if (user.mysqlId) userIdCandidates.push(String(user.mysqlId));
-        const activeBorrow = await HistoryBookMongo.findOne({
+        const activeBorrow = await LoanTicketMongo.findOne({
             userId: { $in: userIdCandidates },
-            status: { $in: ['pending', 'success'] },
+            status: { $in: ['PENDING_APPROVAL', 'BORROWING', 'OVERDUE'] },
         }).lean();
         if (activeBorrow) {
             throw new BadRequestError('Không thể xóa vì độc giả chưa trả hết sách');
@@ -462,7 +556,6 @@ class controllerUser {
         const userObjectId = String(user._id);
         await UserMongo.deleteOne({ _id: user._id });
         await ApiKeyMongo.deleteMany({ userId: userObjectId });
-        await ReaderCodeMongo.deleteMany({ userId: userObjectId });
 
         new OK({ message: 'Xóa người dùng thành công' }).send(res);
     }
@@ -486,40 +579,27 @@ class controllerUser {
             throw new BadRequestError('Người dùng không tồn tại');
         }
 
-        const userObjectId = String(user._id);
-        const currentReaderCode = await ReaderCodeMongo.findOne({ userId: userObjectId });
-        if (currentReaderCode?.status === 'approved' && currentReaderCode.readerCode) {
-            throw new BadRequestError('Bạn đã có mã độc giả');
+        if (user.verificationStatus === 'verified' && getPatronCodeString(user)) {
+            throw new BadRequestError('Tài khoản đã có MSV/MSG');
         }
-        if (currentReaderCode?.status === 'pending' || user.idStudent === '0') {
-            throw new BadRequestError('Vui lòng chờ xác nhận mã độc giả');
+        if (user.verificationStatus === 'pending') {
+            throw new BadRequestError('Vui lòng chờ thư viện xác nhận MSV/MSG');
         }
 
-        if (currentReaderCode) {
-            currentReaderCode.status = 'pending';
-            currentReaderCode.readerCode = null;
-            currentReaderCode.requestedAt = new Date();
-            currentReaderCode.approvedAt = null;
-            await currentReaderCode.save();
-        } else {
-            await ReaderCodeMongo.create({
-                mysqlId: random36(),
-                userId: userObjectId,
-                status: 'pending',
-                readerCode: null,
-                requestedAt: new Date(),
-            });
-        }
-
-        user.idStudent = '0';
+        user.verificationStatus = 'pending';
+        user.studentId = null;
+        user.staffId = null;
+        user.idStudent = null;
         await user.save();
         new OK({ message: 'Yêu cầu thành công' }).send(res);
     }
 
     async confirmIdStudent(req, res) {
-        const { idStudent, userId } = req.body;
-        if (!idStudent || !userId) {
-            throw new BadRequestError('Vui lòng nhập mã độc giả');
+        const { userId, studentId, staffId, idStudent, readerType } = req.body;
+        const sid = normalizeCode(studentId ?? idStudent);
+        const stid = normalizeCode(staffId);
+        if (!userId || (!sid && !stid)) {
+            throw new BadRequestError('Vui lòng nhập MSV hoặc MSG');
         }
 
         const user = await findUserByAnyId(userId);
@@ -527,38 +607,30 @@ class controllerUser {
             throw new BadRequestError('Người dùng không tồn tại');
         }
 
-        const userObjectId = String(user._id);
-        const duplicatedReaderCode = await ReaderCodeMongo.findOne({
-            readerCode: String(idStudent),
-            userId: { $ne: userObjectId },
-        });
-        if (duplicatedReaderCode) {
-            throw new BadRequestError('Mã độc giả đã tồn tại');
-        }
+        const rt = readerType || (stid && !sid ? 'GiangVien_CanBo' : 'SinhVien_ChinhQuy');
+        await assertPatronIdsAvailable({ studentId: sid || undefined, staffId: stid || undefined, readerType: rt, excludeUserId: user._id });
 
-        await ReaderCodeMongo.findOneAndUpdate(
-            { userId: userObjectId },
-            {
-                $set: {
-                    status: 'approved',
-                    readerCode: String(idStudent),
-                    approvedAt: new Date(),
-                },
-                $setOnInsert: {
-                    mysqlId: random36(),
-                    requestedAt: new Date(),
-                },
-            },
-            { upsert: true, new: true },
-        );
-
-        user.idStudent = idStudent;
+        assignPatronCodeToUser(user, sid || stid, rt);
+        user.verificationStatus = 'verified';
         await user.save();
         new OK({ message: 'Xác nhận thành công' }).send(res);
     }
 
     async issueReaderCard(req, res) {
-        const { userId, planMonths, readerCode, birthDate, className, gender, roleType, systemType, issuedAt } = req.body;
+        const {
+            userId,
+            planMonths,
+            readerCode,
+            studentId,
+            staffId,
+            readerType,
+            birthDate,
+            className,
+            gender,
+            roleType,
+            systemType,
+            issuedAt,
+        } = req.body;
         const months = Number(planMonths);
         if (!userId || !Number.isFinite(months) || ![3, 6, 12].includes(months)) {
             throw new BadRequestError('Gói thẻ không hợp lệ');
@@ -569,19 +641,22 @@ class controllerUser {
             throw new BadRequestError('Người dùng không tồn tại');
         }
 
-        const userObjectId = String(user._id);
-        const code = String(readerCode || '').trim();
+        const code = normalizeCode(readerCode || studentId || staffId);
         if (!code) {
-            throw new BadRequestError('Vui lòng nhập mã thẻ');
+            throw new BadRequestError('Vui lòng nhập MSV hoặc MSG');
         }
 
-        const duplicatedReaderCode = await ReaderCodeMongo.findOne({
-            readerCode: code,
-            userId: { $ne: userObjectId },
-        }).lean();
-        if (duplicatedReaderCode) {
-            throw new BadRequestError('Mã thẻ đã tồn tại');
+        let rt = readerType;
+        if (!rt || !READER_TYPES.includes(rt)) {
+            rt = roleType === 'lecturer' ? 'GiangVien_CanBo' : 'SinhVien_ChinhQuy';
         }
+
+        await assertPatronIdsAvailable({
+            studentId: rt === 'GiangVien_CanBo' ? undefined : code,
+            staffId: rt === 'GiangVien_CanBo' ? code : undefined,
+            readerType: rt,
+            excludeUserId: user._id,
+        });
 
         const now = new Date();
         const baseIssuedAt = issuedAt ? dayjs(issuedAt) : dayjs(now);
@@ -595,33 +670,18 @@ class controllerUser {
             throw new BadRequestError('Ngày sinh không hợp lệ');
         }
 
-        await ReaderCodeMongo.findOneAndUpdate(
-            { userId: userObjectId },
-            {
-                $set: {
-                    status: 'approved',
-                    readerCode: code,
-                    approvedAt: now,
-                    planMonths: months,
-                    expiresAt,
-                    issuedAt: issuedAtDate,
-                    birthDate: birthDate ? birthDateDate.toDate() : null,
-                    className: className ? String(className).trim() : null,
-                    gender: gender ? String(gender) : null,
-                    roleType: roleType ? String(roleType) : null,
-                    systemType: systemType ? String(systemType) : null,
-                },
-                $setOnInsert: {
-                    mysqlId: random36(),
-                    requestedAt: now,
-                },
-            },
-            { upsert: true, new: true },
-        );
-
-        user.idStudent = code;
+        assignPatronCodeToUser(user, code, rt);
+        user.verificationStatus = 'verified';
+        user.cardPlanMonths = months;
+        user.libraryCardIssuedAt = issuedAtDate;
+        user.libraryCardExpiresAt = expiresAt;
+        user.birthDate = birthDate ? birthDateDate.toDate() : null;
+        user.className = className ? String(className).trim() : null;
+        user.gender = gender ? String(gender) : null;
+        user.cardSystemType = systemType ? String(systemType) : null;
         await user.save();
 
+        const userObjectId = String(user._id);
         new OK({
             message: 'Cấp thẻ độc giả thành công',
             metadata: { userId: userObjectId, readerCode: code, planMonths: months, expiresAt },
@@ -629,7 +689,7 @@ class controllerUser {
     }
 
     async getRequestLoan(req, res) {
-        const findRequestLoan = await UserMongo.find({ idStudent: { $in: ['0', null] } });
+        const findRequestLoan = await UserMongo.find({ verificationStatus: 'pending' });
         new OK({
             message: 'Lấy danh sách yêu cầu mượn sách thành công',
             metadata: findRequestLoan,
@@ -639,10 +699,11 @@ class controllerUser {
     async getStatistics(req, res) {
         try {
             const totalUsers = await UserMongo.countDocuments();
-            const totalBooks = await ProductMongo.countDocuments();
-            const pendingRequests = await HistoryBookMongo.countDocuments({ status: 'pending' });
+            const totalBooks = await BookMongo.countDocuments();
+            const pendingRequests = await LoanTicketMongo.countDocuments({ status: 'PENDING_APPROVAL' });
 
-            const booksInStock = await ProductMongo.countDocuments({ stock: { $gt: 0 } });
+            const distinctAvailableTitles = await BookCopyMongo.distinct('bookId', { status: 'AVAILABLE' });
+            const booksInStock = distinctAvailableTitles.length;
             const booksOutOfStock = totalBooks - booksInStock;
 
             const bookStatusData = [
@@ -650,16 +711,25 @@ class controllerUser {
                 { type: 'Hết sách', value: booksOutOfStock },
             ];
 
-            const approvedLoans = await HistoryBookMongo.countDocuments({ status: 'success' });
-            const rejectedLoans = await HistoryBookMongo.countDocuments({ status: 'cancel' });
+            const approvedLoans = await LoanTicketMongo.countDocuments({ status: 'BORROWING' });
+            const rejectedLoans = await LoanTicketMongo.countDocuments({ status: 'CANCELLED' });
 
-            const fourteenDaysAgo = new Date();
-            fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-            const overdueLoans = await HistoryBookMongo.countDocuments({
-                status: 'success',
-                returnDate: null,
-                borrowDate: { $lt: fourteenDaysAgo },
+            const now = new Date();
+            const overdueLoans = await LoanTicketMongo.countDocuments({
+                $or: [
+                    { status: 'OVERDUE' },
+                    { status: 'BORROWING', dueDate: { $ne: null, $lt: now } },
+                ],
             });
+
+            const ticketsCurrentlyBorrowing = await LoanTicketMongo.countDocuments({ status: 'BORROWING' });
+            const ticketsOverdueNotReturned = await LoanTicketMongo.countDocuments({ status: 'OVERDUE' });
+
+            const unpaidFineAgg = await FineTicketMongo.aggregate([
+                { $match: { status: 'UNPAID' } },
+                { $group: { _id: null, total: { $sum: '$fineAmount' } } },
+            ]);
+            const totalUnpaidFineAmount = unpaidFineAgg[0]?.total ? Math.round(Number(unpaidFineAgg[0].total)) : 0;
 
             const loanStatusData = [
                 { status: 'Đã duyệt', count: approvedLoans },
@@ -674,6 +744,9 @@ class controllerUser {
                 pendingRequests,
                 bookStatusData,
                 loanStatusData,
+                ticketsCurrentlyBorrowing,
+                ticketsOverdueNotReturned,
+                totalUnpaidFineAmount,
             });
         } catch (error) {
             res.status(500).json({ message: 'Lỗi server: ' + error.message });

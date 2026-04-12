@@ -9,6 +9,7 @@ import {
     LogoutOutlined,
     UserOutlined,
     DownOutlined,
+    DollarOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -19,6 +20,7 @@ import UserManagement from './DashbroadComponents/UserManagement';
 import LoanRequestManagement from './DashbroadComponents/LoanRequestManagement';
 import CardIssuanceManagement from './DashbroadComponents/CardIssuanceManagement';
 import ReaderCodeManagement from './DashbroadComponents/ReaderCodeManagement';
+import FineManagement from './DashbroadComponents/FineManagement';
 import { requestLogout } from '../config/request';
 import { useStore } from '../hooks/useStore';
 
@@ -29,6 +31,7 @@ const components = {
     stats: <Statistics />,
     user: <UserManagement />,
     loan: <LoanRequestManagement />,
+    fines: <FineManagement />,
     'card-codes': <ReaderCodeManagement />,
     'card-issue': <CardIssuanceManagement />,
     book: <BookManagement />,
@@ -38,6 +41,7 @@ const menuItems = [
     { key: 'stats', icon: <DashboardOutlined />, label: 'Dashboard' },
     { key: 'book', icon: <BookOutlined />, label: 'Quản lý sách' },
     { key: 'loan', icon: <HistoryOutlined />, label: 'Yêu cầu mượn sách' },
+    { key: 'fines', icon: <DollarOutlined />, label: 'Quản lý Phạt' },
     {
         key: 'cardGroup',
         icon: <IdcardOutlined />,

@@ -14,12 +14,13 @@ const CardIssuanceManagement = () => {
             email: '',
             phone: '',
             address: '',
-            readerCode: '',
+            readerType: 'SinhVien_ChinhQuy',
+            studentId: '',
+            staffId: '',
             planMonths: 3,
             birthDate: null,
             className: '',
             gender: 'male',
-            roleType: 'student',
             systemType: 'civil',
             issuedAt,
             expiresAt: issuedAt.add(3, 'month'),
@@ -34,12 +35,13 @@ const CardIssuanceManagement = () => {
             email: '',
             phone: '',
             address: '',
-            readerCode: '',
+            readerType: 'SinhVien_ChinhQuy',
+            studentId: '',
+            staffId: '',
             planMonths: 3,
             birthDate: null,
             className: '',
             gender: 'male',
-            roleType: 'student',
             systemType: 'civil',
             issuedAt,
             expiresAt: issuedAt.add(3, 'month'),
@@ -51,11 +53,19 @@ const CardIssuanceManagement = () => {
     const onCardFormFinish = async (values) => {
         setLoading(true);
         try {
+            const rt = values.readerType;
+            const studentId = rt === 'GiangVien_CanBo' ? undefined : String(values.studentId || '').trim();
+            const staffId = rt === 'GiangVien_CanBo' ? String(values.staffId || '').trim() : undefined;
+            const patronCode = rt === 'GiangVien_CanBo' ? staffId : studentId;
+
             const created = await requestAdminCreateReader({
                 fullName: String(values.fullName || '').trim(),
                 email: String(values.email || '').trim(),
                 phone: String(values.phone || '').trim(),
                 address: String(values.address || '').trim(),
+                readerType: rt,
+                studentId,
+                staffId,
             });
             const targetUserId = created?.metadata?.id || created?.metadata?.user?.id || created?.metadata?.user?._id;
 
@@ -67,11 +77,12 @@ const CardIssuanceManagement = () => {
             await requestIssueReaderCard({
                 userId: targetUserId,
                 planMonths: values.planMonths,
-                readerCode: String(values.readerCode || '').trim(),
+                readerCode: patronCode,
+                readerType: rt,
                 birthDate: values.birthDate ? values.birthDate.toISOString() : null,
                 className: values.className,
                 gender: values.gender,
-                roleType: values.roleType,
+                roleType: rt === 'GiangVien_CanBo' ? 'lecturer' : 'student',
                 systemType: values.systemType,
                 issuedAt: values.issuedAt ? values.issuedAt.toISOString() : null,
             });
@@ -103,8 +114,8 @@ const CardIssuanceManagement = () => {
                     layout="vertical"
                     initialValues={{
                         planMonths: 3,
+                        readerType: 'SinhVien_ChinhQuy',
                         gender: 'male',
-                        roleType: 'student',
                         systemType: 'civil',
                         issuedAt: dayjs(),
                         expiresAt: dayjs().add(3, 'month'),
@@ -124,11 +135,47 @@ const CardIssuanceManagement = () => {
                             <Input className="rounded-xl" placeholder="Nguyễn Văn A" />
                         </Form.Item>
                         <Form.Item
-                            label="Mã độc giả"
-                            name="readerCode"
-                            rules={[{ required: true, message: 'Vui lòng nhập mã thẻ!' }]}
+                            label="Loại bạn đọc"
+                            name="readerType"
+                            rules={[{ required: true, message: 'Vui lòng chọn loại bạn đọc!' }]}
                         >
-                            <Input className="rounded-xl" placeholder="Ví dụ: DG0001" />
+                            <Select
+                                className="rounded-xl"
+                                options={[
+                                    { value: 'SinhVien_ChinhQuy', label: 'Sinh viên chính quy' },
+                                    { value: 'HocVien_NCS', label: 'Học viên / NCS' },
+                                    { value: 'GiangVien_CanBo', label: 'Giảng viên / Cán bộ' },
+                                ]}
+                            />
+                        </Form.Item>
+
+                        <Form.Item
+                            noStyle
+                            shouldUpdate={(prev, cur) => prev.readerType !== cur.readerType}
+                        >
+                            {({ getFieldValue }) => {
+                                const rt = getFieldValue('readerType');
+                                if (rt === 'GiangVien_CanBo') {
+                                    return (
+                                        <Form.Item
+                                            label="MSG (mã giảng viên/cán bộ)"
+                                            name="staffId"
+                                            rules={[{ required: true, message: 'Vui lòng nhập MSG!' }]}
+                                        >
+                                            <Input className="rounded-xl" placeholder="MSG" />
+                                        </Form.Item>
+                                    );
+                                }
+                                return (
+                                    <Form.Item
+                                        label="MSV (mã sinh viên)"
+                                        name="studentId"
+                                        rules={[{ required: true, message: 'Vui lòng nhập MSV!' }]}
+                                    >
+                                        <Input className="rounded-xl" placeholder="MSV" />
+                                    </Form.Item>
+                                );
+                            }}
                         </Form.Item>
 
                         <Form.Item label="Gmail" name="email" rules={[{ required: true, message: 'Vui lòng nhập email!' }, { type: 'email', message: 'Email không hợp lệ' }]}>
@@ -156,13 +203,6 @@ const CardIssuanceManagement = () => {
                                 <Radio value="female">Nữ</Radio>
                             </Radio.Group>
                         </Form.Item>
-                        <Form.Item label="Chức vụ" name="roleType">
-                            <Radio.Group>
-                                <Radio value="student">Sinh viên</Radio>
-                                <Radio value="lecturer">Học viên</Radio>
-                            </Radio.Group>
-                        </Form.Item>
-
                         <Form.Item label="Hệ" name="systemType">
                             <Radio.Group>
                                 <Radio value="civil">Dân sự</Radio>

@@ -37,7 +37,7 @@ const SendMailBookBorrowConfirmation = async (email, productInfo, borrowDate, re
             from: `"Thư viện Moho" <${EMAIL_USER}>`,
             to: email,
             subject: 'Xác nhận mượn sách thành công',
-            text: `Bạn đã mượn sách thành công: ${productInfo.nameProduct}. Ngày trả dự kiến: ${returnDate}`,
+            text: `Bạn đã mượn sách thành công: ${productInfo.nameProduct || productInfo.title}. Ngày trả dự kiến: ${returnDate}`,
             html: `
             <!DOCTYPE html>
             <html lang="vi">
@@ -139,7 +139,7 @@ const SendMailBookBorrowConfirmation = async (email, productInfo, borrowDate, re
                         </div>
                         
                         <div class="book-info">
-                            <div class="book-title">${productInfo.nameProduct}</div>
+                            <div class="book-title">${productInfo.nameProduct || productInfo.title}</div>
                             <div class="book-details">
                                 <strong>Mô tả:</strong> ${productInfo.description || 'Không có mô tả'}<br/>
                                 <strong>Mã sách:</strong> ${productInfo.id}<br/>

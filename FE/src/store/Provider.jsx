@@ -6,12 +6,11 @@ import cookies from 'js-cookie';
 import { useEffect, useState } from 'react';
 import { requestAuth } from '../config/request';
 import { ToastContainer } from 'react-toastify';
-import ModalBuyBook from '../components/ModalBuyBook';
-
 function normalizeUser(user) {
     if (!user || typeof user !== 'object') return {};
     const id = user.id || user.mysqlId || (user._id ? String(user._id) : undefined);
-    const readerCode = user.readerCode || user.idStudent || null;
+    const readerCode =
+        user.readerCode || user.staffId || user.studentId || user.idStudent || null;
     return { ...user, id, readerCode };
 }
 
@@ -63,7 +62,6 @@ export function Provider({ children }) {
                 }}
             >
                 {children}
-                <ModalBuyBook />
                 <ToastContainer />
             </Context.Provider>
         </>

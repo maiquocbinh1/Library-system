@@ -1,0 +1,126 @@
+================================================================================
+BẢNG KHẢO SÁT NGHIỆP VỤ THƯ VIỆN — PTIT & THAM CHIẾU
+(Định dạng: Trường | Quy định | Số liệu | Ý nghĩa | Chuyển hóa thành chức năng hệ thống)
+Nguồn: Nội quy công khai Thư viện PTIT; tham chiếu ĐHQGHN, Trung tâm Học liệu ĐH Cần Thơ.
+================================================================================
+
+ĐOẠN TÓM TẮT DÙNG TRONG BÁO CÁO (có thể chép vào Chương Khảo sát thực tế)
+--------------------------------------------------------------------------------
+Khảo sát nguồn công khai của Thư viện PTIT cho thấy đơn vị đã ban hành khá rõ các chính sách nghiệp vụ cốt lõi: sinh viên/học viên tại phòng đọc kho mở được mượn 2 cuốn trong 7 ngày, cán bộ/giảng viên được mượn 3 cuốn trong 15 ngày; tại phòng mượn, cán bộ/giảng viên được mượn 7 cuốn trong 60 ngày, sinh viên chính quy được mượn tối đa 8 cuốn trong 150 ngày, học viên cao học/nghiên cứu sinh được mượn 5 cuốn trong 150 ngày và phải ký cược tiền theo quy định. PTIT cũng công khai lịch phục vụ ngoài giờ theo từng giai đoạn, trong đó có các mốc 08:00–11:30, 13:30–19:00 và 13:30–21:00 tùy thời kỳ. Tuy nhiên, các nguồn công khai hiện chưa nêu cụ thể mức tiền phạt quá hạn theo ngày/cuốn, mà mới dừng ở quy định hình thức xử lý như phạt tiền, khóa thẻ từ 10 ngày đến vĩnh viễn và bồi thường thiệt hại. Vì vậy, đề tài kế thừa khung nghiệp vụ của PTIT, đồng thời đề xuất cơ chế cấu hình mức phạt linh hoạt; trong mô hình thử nghiệm, mức phạt mặc định tham chiếu từ Thư viện ĐHQGHN là 1.000 đồng/cuốn/ngày quá hạn.
+
+================================================================================
+PHẦN A — HẠN MỨC & THỜI HẠN MƯỢN (PTIT, THEO KHÔNG GIAN DỊCH VỤ)
+================================================================================
+
+STT | Trường / Đối tượng & kênh | Quy định (tóm tắt) | Số liệu cụ thể | Ý nghĩa nghiệp vụ | Chuyển hóa thành chức năng / cấu hình hệ thống
+----|---------------------------|-------------------|----------------|------------------|--------------------------------------------------
+A1 | Phòng đọc — kho mở — Học viên/SV PTIT | Giới hạn số đầu và thời hạn mượn tại chỗ/kênh tương ứng | 2 cuốn; 7 ngày | Phân tầng đối tượng + không gian phục vụ | Policy: readerType + loanChannel = READ_OPEN_SHELF; maxActiveItems=2; loanDays=7
+A2 | Phòng đọc — kho mở — Cán bộ/GV PTIT | Tương tự, mức cao hơn SV | 3 cuốn; 15 ngày | Phản ánh quyền ưu tiên CB/GV | Cùng channel; readerType = GiangVien_CanBo; max=3; days=15
+A3 | Phòng mượn — Cán bộ/GV PTIT | Mượn về (hoặc lưu hành dài hơn theo quy định PTIT) | 7 cuốn; 60 ngày | Hạn mức cao, thời gian ngắn hơn SV CQ | Policy: channel = BORROW_DESK; maxBooks=7; loanDays=60
+A4 | Phòng mượn — Sinh viên chính quy | Phổ biến nhất trong khảo sát đồ án | Tối đa 8 cuốn; 150 ngày (1 học kỳ) | Gắn học kỳ — cần dueDate linh hoạt | Policy: SinhVien_ChinhQuy; max=8; loanDays=150; optional semesterTag
+A5 | Phòng mượn — SV hệ khác / HV cao học / NCS | Hạn mức thấp hơn CQ; có ký cược | 5 cuốn; 150 ngày; ký cược tiền (TT) | Rủi ro tài sản — workflow bổ sung | Policy: depositRequired=true; max=5; loanDays=150; module ký cược/phiếu cược
+A6 | Phòng đọc — kho đóng — Tài liệu tiếng Việt | Giới hạn theo “lần” mượn/đọc tại chỗ | 2 cuốn/lần | Phân biệt ngôn ngữ & kho đóng | materialLanguage=Vietnamese; maxItemsPerTransaction=2; roomType=CLOSED_STACK
+A7 | Phòng đọc — kho đóng — Tài liệu ngoại văn | Hạn chặt hơn TV | 1 cuốn/lần | Bảo vệ tài liệu hiếm/ngoại văn | materialLanguage=Foreign; maxItemsPerTransaction=1
+
+================================================================================
+PHẦN B — GIA HẠN (PTIT)
+================================================================================
+
+STT | Trường | Quy định | Số liệu | Ý nghĩa | Chuyển hóa chức năng
+----|--------|----------|---------|---------|----------------------
+B1 | Điều kiện gia hạn | Chỉ gia hạn khi chưa có bạn đọc khác đăng ký mượn | Không công khai số lần gia hạn cố định trên nguồn đã dẫn | Quy tắc hàng đợi — cốt lõi để code renewal | allowRenewal=true; renewalCondition=no_active_reservation_queue; bảng reservation_queue; kiểm tra trước khi renew()
+B2 | Số lần gia hạn | PTIT nhấn điều kiện “không có người đăng ký”, không thấy nêu rõ max lần | Đề xuất cấu hình nội bộ: 1–2 lần | Trung thực học thuật + có số để demo | maxRenewalTimes = configurable (1 hoặc 2); admin đổi trên policy
+
+================================================================================
+PHẦN C — LOẠI TÀI LIỆU KHÔNG CHO MƯỢN VỀ (PTIT)
+================================================================================
+
+STT | Trường | Quy định | Số liệu | Ý nghĩa | Chuyển hóa chức năng
+----|--------|----------|---------|---------|----------------------
+C1 | Tài liệu có dấu đỏ | Không mượn về nhà | — | Bảo mật/văn bản đặc biệt | resourceTag=red_stamp; circulationRule=no_home_loan
+C2 | Sách tra cứu | Không mượn về | — | Dùng tại chỗ | materialKind=reference; room_use_only
+C3 | Luận án, luận văn | Không mượn về | — | Tài sản luận văn | thesis_or_dissertation; no_home_loan
+C4 | Báo, tạp chí | Không mượn về | — | Chu kỳ xuất bản | serials; no_home_loan
+C5 | Tổng hợp | Phân loại tài nguyên | — | Cần metadata đầu mục | Bảng resource_type_policies + cờ trên Book/BookItem
+
+================================================================================
+PHẦN D — LỊCH PHỤC VỤ NGOÀI GIỜ (PTIT — GIAI ĐOẠN 04/09/2024 → 28/02/2025)
+================================================================================
+
+STT | Trường | Quy định | Số liệu | Ý nghĩa | Chuyển hóa chức năng
+----|--------|----------|---------|---------|----------------------
+D1 | Tháng 9, 10, 11 — T2–T6 | Khung giờ sáng/chiều | 08:00–11:30; 13:30–19:00 | Phục vụ mở rộng nhưng chưa tối đa | service_hours: semester_period=Sep-Nov; weekday=Mon-Fri; slots
+D2 | Tháng 9, 10, 11 — T7 | Cuối tuần ngắn hơn | 08:00–11:30; 13:30–17:00 | Giảm ca chiều T7 | weekday=Sat; slots
+D3 | Tháng 12/2024, tháng 1–2/2025 — T2–T6 | Ca chiều kéo dài | 08:00–11:30; 13:30–21:00 | Cao điểm cuối năm/học kỳ | Peak season flag trên service_hours
+D4 | Tháng 12/2024, tháng 1–2/2025 — T7 | Giống giai đoạn trước | 08:00–11:30; 13:30–17:00 | Ổn định cuối tuần | Sat rule tách khối thời gian
+
+================================================================================
+PHẦN E — XỬ LÝ VI PHẠM (PTIT — HÌNH THỨC, KHÔNG NÊU SỐ TIỀN CỤ THỂ)
+================================================================================
+
+STT | Trường | Quy định | Số liệu | Ý nghĩa | Chuyển hóa chức năng
+----|--------|----------|---------|---------|----------------------
+E1 | Nhắc nhở / cảnh cáo | Hình thức nhẹ | — | Quy trình kỷ luật lớp 1 | violation_level=reminder; workflow notification
+E2 | Phạt tiền | Có hình thức phạt tiền | Không công khai mức/ngày/cuốn trên nguồn đã tra | Trung thực báo cáo | fine_policies: overdue_fine_per_day = configurable; không hard-code PTIT
+E3 | Khóa thẻ | Từ 10 ngày đến vĩnh viễn | 10 ngày là mốc dưới trong dải (không = trigger tự động theo ngày quá hạn) | Cần cấu hình ngưỡng | cardSuspensionThresholdDays configurable; suspension_mode manual/auto
+E4 | Bồi thường thiệt hại | Mức do Trung tâm quyết | — | Không tự động hóa 100% | damaged_book_rule, lost_book_rule; quyết định thủ công + log
+E5 | Thông báo cơ sở đào tạo | Hình thức nặng | — | Liên thông đơn vị | integration flag + export báo cáo
+E6 | Đề nghị truy tố | Mức rất nặng | — | Hiếm, workflow đặc biệt | case_type=legal_referral; chỉ admin cấp cao
+
+================================================================================
+PHẦN F — THAM CHIẾU CÓ SỐ TIỀN CỤ THỂ (ĐHQGHN) — DÙNG CHO DEMO/CẤU HÌNH
+================================================================================
+
+STT | Trường | Quy định | Số liệu | Ý nghĩa | Chuyển hóa chức năng
+----|--------|----------|---------|---------|----------------------
+F1 | ĐHQGHN — Trả muộn | Phạt theo ngày quá hạn | 1.000 đồng/cuốn/ngày | Benchmark có số cho hệ thống | overdueFinePerDay=1000; fineUnit=per_copy_per_day; ghi rõ “tham chiếu ĐHQGHN, không phải quy định PTIT công khai”
+F2 | Đề xuất trần phạt (demo) | Tránh số quá lớn khi demo | Ví dụ maxFineCap = 100.000 (cấu hình) | Kiểm soát tài chính demo | max_fine trong fine_policies
+
+================================================================================
+PHẦN G — THAM CHIẾU VẬN HÀNH (ĐH CẦN THƠ — GIỜ & TIỆN ÍCH)
+================================================================================
+
+STT | Trường | Quy định | Số liệu | Ý nghĩa | Chuyển hóa chức năng
+----|--------|----------|---------|---------|----------------------
+G1 | Mở cửa | Thứ Hai – Thứ Bảy | — | So sánh mô hình | service_hours theo weekday
+G2 | Phục vụ máy tính | Khung giờ | 07:00–21:00 | Dịch vụ IT trong thư viện | service_type=computer_room
+G3 | Phục vụ tài liệu mượn | Khung giờ | 07:30–20:45 | Lưu hành | service_type=circulation
+G4 | Thùng trả sách | 24/24 | Có | Tiện ích hiện đại | book_drop_24_7 = true/false trong cấu hình site
+
+================================================================================
+PHẦN H — GỢI Ý BẢNG CSDL / MODULE (CHO CHƯƠNG THIẾT KẾ HỆ THỐNG)
+================================================================================
+
+Bảng / module gợi ý          | Nội dung chính
+---------------------------|---------------------------------------------------------------
+library_policies           | Metadata tổng: tên trường, phiên bản nội quy, ngày hiệu lực
+loan_policies              | readerType + loanChannel + maxBooks + loanDays + depositRequired
+fine_policies              | reader_type, resource_type, overdue_fine_per_day, grace_days, max_fine, lost/damaged/suspension
+service_hours              | semester_period, weekday, open_time, close_time, service_type (reading_room, circulation, computer…)
+violation_policies         | Loại vi phạm, mức, workflow (nhắc → phạt → khóa thẻ → …)
+resource_type_policies     | Loại tài liệu: cho mượn về hay chỉ tại chỗ
+reservation_queue          | Hàng chờ mượn — phục vụ điều kiện gia hạn PTIT
+
+================================================================================
+GỢI Ý KHÓA POLICY CẤU HÌNH (TÊN NỘI BỘ — MAP VỚI BẢNG A)
+================================================================================
+
+Policy key (gợi ý)                    | maxBooks | loanDays | Ghi chú
+------------------------------------|----------|----------|----------------------------------
+SinhVien_PhongDocKhoMo              | 2        | 7        | A1
+GiangVien_PhongDocKhoMo             | 3        | 15       | A2
+SinhVienChinhQuy_PhongMuon          | 8        | 150      | A4
+GiangVien_PhongMuon                 | 7        | 60       | A3
+HocVienNCS_PhongMuon                | 5        | 150      | depositRequired=true — A5
+
+================================================================================
+KẾT LUẬN NGẮN (CHO BÁO CÁO)
+================================================================================
+- PTIT: rõ hạn mức, thời hạn, điều kiện gia hạn, loại không cho mượn về, lịch ngoài giờ; không công khai mức phạt quá hạn cụ thể trên nguồn đã khảo sát.
+- Hệ thống đề xuất: bám PTIT cho quy trình; tham số phạt cấu hình; mặc định demo 1.000đ/cuốn/ngày (ĐHQGHN); giờ phục vụ/thùng trả sách có thể học thêm ĐHCT.
+
+================================================================================
+HƯỚNG DẪN DÁN VÀO WORD
+================================================================================
+- Chọn toàn bộ bảng phần A–G (các dòng STT), Copy → Word → Insert Table → Convert Text to Table → phân tách bằng dấu | hoặc Tab nếu bạn xuất lại TSV.
+- Hoặc giữ file .txt làm phụ lục đính kèm đồ án.

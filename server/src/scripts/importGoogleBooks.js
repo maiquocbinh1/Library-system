@@ -5,7 +5,9 @@ const axios = require('axios');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 
-const ProductMongo = require('../models/product.mongo.model');
+const BookMongo = require('../models/book.mongo.model');
+const { createBookCopiesForBook } = require('../services/bookCopy.service');
+const { syncBookInventoryFields } = require('../utils/bookInventory');
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -19,7 +21,6 @@ function randomInt(min, max) {
 }
 
 function pickCoverType() {
-    // Theo UI: Bìa cứng/Bìa mềm, lưu vào DB theo enum schema: hard/soft
     return Math.random() < 0.5 ? 'hard' : 'soft';
 }
 
@@ -89,7 +90,7 @@ async function normalizeBookItem(item) {
 
     return {
         mysqlId: crypto.randomUUID(),
-        nameProduct: title,
+        title,
         image: imagePath,
         description: volumeInfo.description || 'Chưa có mô tả cho cuốn sách này.',
         stock: randomInt(10, 50),
@@ -152,8 +153,22 @@ async function runImport() {
             return;
         }
 
-        const inserted = await ProductMongo.insertMany(books, { ordered: false });
-        console.log(`[Seed] Import thành công ${inserted.length}/${books.length} sách vào collection products`);
+        let count = 0;
+        for (const doc of books) {
+            const stockNum = Number(doc.stock) || 0;
+            const { stock, ...rest } = doc;
+            const book = await BookMongo.create({
+                ...rest,
+                stock: 0,
+                totalCopies: 0,
+                coverPrice: null,
+            });
+            await createBookCopiesForBook(book._id, book.bookCode || String(book._id).slice(-8), stockNum);
+            await syncBookInventoryFields(book._id);
+            count += 1;
+        }
+
+        console.log(`[Seed] Import thành công ${count}/${books.length} đầu sách vào library_books (+ bản sao vật lý)`);
     } finally {
         await mongoose.connection.close();
         console.log('[Seed] Đã đóng kết nối MongoDB');
