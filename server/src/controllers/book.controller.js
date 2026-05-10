@@ -6,7 +6,7 @@ const BookMongo = require('../models/book.mongo.model');
 const BookCopyMongo = require('../models/bookCopy.mongo.model');
 const LoanTicketMongo = require('../models/loanTicket.mongo.model');
 const { countAvailableForBook, syncBookInventoryFields } = require('../utils/bookInventory');
-const { createBookCopiesForBook, deleteAvailableCopies } = require('../services/bookCopy.service');
+const { createBookCopiesForBook, deleteAvailableCopies, createBookCopiesFromBarcodes } = require('../services/bookCopy.service');
 
 function random36() {
     return crypto.randomUUID();
@@ -209,9 +209,12 @@ class controllerBook {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
 
+        // Chấp nhận barcodes (mảng) hoặc stock (số) để tương thích cả cũ lẫn mới
+        const barcodesRaw = req.body.barcodes;
+        const hasBarcodes = Array.isArray(barcodesRaw) && barcodesRaw.length > 0;
         const stockNum = Number(stock);
-        if (!Number.isFinite(stockNum) || stockNum < 0) {
-            throw new BadRequestError('Số lượng không hợp lệ');
+        if (!hasBarcodes && (!Number.isFinite(stockNum) || stockNum < 0)) {
+            throw new BadRequestError('Vui lòng nhập danh sách mã sách (barcodes) hoặc số lượng');
         }
 
         let bookCode = '';
@@ -247,7 +250,11 @@ class controllerBook {
             publishingCompany,
         });
 
-        await createBookCopiesForBook(book._id, book.bookCode || String(book._id).slice(-8), stockNum);
+        if (hasBarcodes) {
+            await createBookCopiesFromBarcodes(book._id, barcodesRaw);
+        } else if (stockNum > 0) {
+            await createBookCopiesForBook(book._id, book.bookCode || String(book._id).slice(-8), stockNum);
+        }
         await syncBookInventoryFields(book._id);
 
         const fresh = await BookMongo.findById(book._id);
@@ -456,6 +463,32 @@ class controllerBook {
         new OK({
             message: 'Update product success',
             metadata: [1],
+        }).send(res);
+    }
+
+    /**
+     * Thêm bản sao vào đầu sách đã có bằng danh sách barcode thủ công.
+     * POST /api/product/add-copies-by-barcode
+     * Body: { bookId, barcodes: ["DNT-01", "DNT-02"] }
+     */
+    async addCopiesByBarcode(req, res) {
+        await ensureLegacyBooks();
+        const { bookId, barcodes } = req.body;
+        if (!bookId) throw new BadRequestError('Thiếu bookId');
+        if (!Array.isArray(barcodes) || !barcodes.length) throw new BadRequestError('Danh sách mã sách không được rỗng');
+
+        const book = await findBookByAnyId(bookId);
+        if (!book) throw new BadRequestError('Sách không tồn tại');
+
+        const { created, duplicates } = await createBookCopiesFromBarcodes(book._id, barcodes);
+        await syncBookInventoryFields(book._id);
+
+        const avail = await countAvailableForBook(book._id);
+        new OK({
+            message: duplicates.length
+                ? `Đã thêm ${created.length} bản sao. ${duplicates.length} mã đã trùng: ${duplicates.join(', ')}`
+                : `Đã thêm ${created.length} bản sao thành công`,
+            metadata: { created, duplicates, currentStock: avail },
         }).send(res);
     }
 

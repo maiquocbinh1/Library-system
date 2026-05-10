@@ -227,3 +227,86 @@ export const requestReturnBooks = async (data) => {
     const res = await apiClient.post(`${apiHistoryBook}/return-books`, data);
     return res.data;
 };
+
+/** Thủ thư xác nhận xuất kho bằng barcode (PENDING → BORROWING) */
+export const requestConfirmBorrow = async (data) => {
+    const res = await apiClient.put(`${apiHistoryBook}/confirm-borrow`, data);
+    return res.data;
+};
+
+/** Thủ thư trả sách bằng barcode */
+export const requestReturnByBarcode = async (data) => {
+    const res = await apiClient.post(`${apiHistoryBook}/return-by-barcode`, data);
+    return res.data;
+};
+
+/** Kiểm tra thông tin barcode */
+export const requestCheckBarcode = async (barcode) => {
+    const res = await apiClient.get(`${apiHistoryBook}/check-barcode?barcode=${encodeURIComponent(barcode)}`);
+    return res.data;
+};
+
+/** Thêm bản sao vào đầu sách bằng barcode thủ công */
+export const requestAddCopiesByBarcode = async (data) => {
+    const res = await apiClient.post(`${apiProduct}/add-copies-by-barcode`, data);
+    return res.data;
+};
+
+// ─── Analytics / EIS / DSS ───────────────────────────────────────────────────
+const apiAdmin = '/api/admin';
+
+export const requestGetEisKpis = async () => {
+    const res = await apiClient.get(`${apiAdmin}/eis/kpis`);
+    return res.data;
+};
+
+export const requestGetCategoryTrends = async (period = 'all') => {
+    const res = await apiClient.get(`${apiAdmin}/dss/category-trends?period=${period}`);
+    return res.data;
+};
+
+export const requestGetDrilldown = async (category, period = 'all') => {
+    const res = await apiClient.get(`${apiAdmin}/dss/drilldown?category=${encodeURIComponent(category)}&period=${period}`);
+    return res.data;
+};
+
+export const requestPostWhatIf = async (data) => {
+    const res = await apiClient.post(`${apiAdmin}/dss/what-if`, data);
+    return res.data;
+};
+
+export const requestGetHighRiskUsers = async () => {
+    const res = await apiClient.get(`${apiAdmin}/dss/high-risk-users`);
+    return res.data;
+};
+
+export const requestGetUnusedBooks = async () => {
+    const res = await apiClient.get(`${apiAdmin}/dss/unused-books`);
+    return res.data;
+};
+
+export const requestExportHighRisk = () => {
+    window.open(`${import.meta.env.VITE_API_URL}${apiAdmin}/dss/export/high-risk`, '_blank');
+};
+
+export const requestExportUnusedBooks = () => {
+    window.open(`${import.meta.env.VITE_API_URL}${apiAdmin}/dss/export/unused-books`, '_blank');
+};
+
+// ─── OAS ─────────────────────────────────────────────────────────────────────
+const apiOas = '/api/admin/oas';
+
+export const requestSendWarningEmail = async (data) => {
+    const res = await apiClient.post(`${apiOas}/send-warning-email`, data);
+    return res.data;
+};
+
+export const requestSendMassEmail = async (data) => {
+    const res = await apiClient.post(`${apiOas}/send-mass-email`, data);
+    return res.data;
+};
+
+export const requestGetEmailLogs = async (type = 'all') => {
+    const res = await apiClient.get(`${apiOas}/email-logs?type=${type}`);
+    return res.data;
+};

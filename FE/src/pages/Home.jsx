@@ -37,7 +37,7 @@ function Home() {
                 const historyList = Array.isArray(historyRes?.metadata) ? historyRes.metadata : [];
                 setProducts(productList);
                 setHistoryItems(historyList);
-            } catch (error) {
+            } catch {
                 setProducts([]);
                 setHistoryItems([]);
             }

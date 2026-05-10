@@ -12,8 +12,6 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const SEED = [
     { readerType: 'SinhVien_ChinhQuy', maxBooks: 8, loanDays: 150, overdueFinePerDay: 1000 },
-    { readerType: 'GiangVien_CanBo', maxBooks: 7, loanDays: 60, overdueFinePerDay: 1000 },
-    { readerType: 'HocVien_NCS', maxBooks: 5, loanDays: 150, overdueFinePerDay: 1000 },
 ];
 
 async function run() {

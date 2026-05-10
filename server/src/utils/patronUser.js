@@ -1,15 +1,13 @@
-const READER_TYPES = ['SinhVien_ChinhQuy', 'GiangVien_CanBo', 'HocVien_NCS'];
+const READER_TYPES = ['SinhVien_ChinhQuy'];
 
 function normalizeCode(value) {
     if (value === undefined || value === null) return '';
     return String(value).trim();
 }
 
-/** Chuỗi MSV/MSG hiển thị (ưu tiên staffId nếu có) — không dùng mã độc giả riêng. */
+/** Chuỗi MSV hiển thị */
 function getPatronCodeString(user) {
     if (!user) return null;
-    const staff = normalizeCode(user.staffId);
-    if (staff) return staff;
     const stu = normalizeCode(user.studentId);
     if (stu && stu !== '0') return stu;
     const legacy = normalizeCode(user.idStudent);
@@ -24,26 +22,19 @@ function isPatronPending(user) {
     return legacy === '0';
 }
 
-/** Đủ điều kiện mượn sách: có MSV/MSG hợp lệ và không đang chờ duyệt. */
+/** Đủ điều kiện mượn sách: có MSV hợp lệ và không đang chờ duyệt. */
 function canBorrowAsPatron(user) {
     if (!user || user.role === 'admin') return false;
     if (isPatronPending(user)) return false;
     return Boolean(getPatronCodeString(user));
 }
 
-function assignPatronCodeToUser(user, code, readerType) {
+function assignPatronCodeToUser(user, code) {
     const c = normalizeCode(code);
     if (!c) return;
-    const type = readerType || user.readerType || 'SinhVien_ChinhQuy';
-    if (type === 'GiangVien_CanBo') {
-        user.staffId = c;
-        user.studentId = null;
-    } else {
-        user.studentId = c;
-        user.staffId = null;
-    }
-    user.readerType = type;
-    user.idStudent = user.studentId || user.staffId || null;
+    user.studentId = c;
+    user.readerType = 'SinhVien_ChinhQuy';
+    user.idStudent = c;
 }
 
 module.exports = {

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Table, Button, Modal, Form, InputNumber, Select, message, Popconfirm, Tag } from 'antd';
 import { EditOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { requestCreatePolicy, requestDeletePolicy, requestGetPolicies, requestUpdatePolicy } from '../../config/request';
-import { READER_TYPE_OPTIONS, readerTypeLabel } from '../../constants/readerTypes';
 
 const PolicyManagement = () => {
     const [data, setData] = useState([]);
@@ -59,7 +58,7 @@ const PolicyManagement = () => {
             const values = await form.validateFields();
             setLoading(true);
             if (creating) {
-                await requestCreatePolicy(values);
+                await requestCreatePolicy({ ...values, readerType: 'SinhVien_ChinhQuy' });
                 message.success('Đã thêm chính sách');
             } else if (editing?.id) {
                 await requestUpdatePolicy(editing.id, {
@@ -98,7 +97,7 @@ const PolicyManagement = () => {
             title: 'Đối tượng',
             dataIndex: 'readerType',
             key: 'readerType',
-            render: (v) => <Tag color="blue">{readerTypeLabel(v)}</Tag>,
+            render: () => <Tag color="blue">Sinh viên</Tag>,
         },
         { title: 'Tối đa mượn', dataIndex: 'maxBooks', key: 'maxBooks', width: 120 },
         { title: 'Số ngày mượn', dataIndex: 'loanDays', key: 'loanDays', width: 130 },
@@ -161,13 +160,6 @@ const PolicyManagement = () => {
                 width={520}
             >
                 <Form form={form} layout="vertical">
-                    <Form.Item
-                        name="readerType"
-                        label="Loại bạn đọc"
-                        rules={[{ required: true, message: 'Chọn loại' }]}
-                    >
-                        <Select options={READER_TYPE_OPTIONS} disabled={!creating} className="rounded-lg" />
-                    </Form.Item>
                     <Form.Item name="maxBooks" label="Số ấn phẩm tối đa" rules={[{ required: true }]}>
                         <InputNumber min={1} className="w-full" />
                     </Form.Item>

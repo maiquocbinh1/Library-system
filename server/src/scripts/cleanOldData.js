@@ -19,27 +19,17 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 /** user1@gmail.com … user18@gmail.com */
 const MOCK_USER_GMAIL_REGEX = /^user([1-9]|1[0-8])@gmail\.com$/i;
 
-/** Không có studentId / staffId (null, thiếu field, hoặc chuỗi rỗng). */
+/** Không có studentId (null, thiếu field, hoặc chuỗi rỗng). */
 function hasNoStudentId() {
     return {
-        $or: [
-            { studentId: null },
-            { studentId: { $exists: false } },
-            { studentId: '' },
-        ],
-    };
-}
-
-function hasNoStaffId() {
-    return {
-        $or: [{ staffId: null }, { staffId: { $exists: false } }, { staffId: '' }],
+        $or: [{ studentId: null }, { studentId: { $exists: false } }, { studentId: '' }],
     };
 }
 
 function guestLikeUserFilter() {
     return {
         role: { $ne: 'admin' },
-        $and: [hasNoStudentId(), hasNoStaffId()],
+        ...hasNoStudentId(),
     };
 }
 
@@ -94,13 +84,13 @@ async function run() {
     console.log('[cleanOldData] Đã kết nối MongoDB\n');
 
     try {
-        const select = '_id mysqlId email fullName role studentId staffId';
+        const select = '_id mysqlId email fullName role studentId';
 
         const mockEmailUsers = await UserMongo.find(mockNumberedGmailFilter()).select(select).lean();
         const guestUsers = await UserMongo.find(guestLikeUserFilter()).select(select).lean();
 
         console.log(`[cleanOldData] Khớp email mock user1–user18@gmail.com: ${mockEmailUsers.length} user`);
-        console.log(`[cleanOldData] Khách (không MSV & không MSG, trừ admin): ${guestUsers.length} user`);
+        console.log(`[cleanOldData] Khách (không MSV, trừ admin): ${guestUsers.length} user`);
 
         const toRemove = mergeUsersById([mockEmailUsers, guestUsers]);
 

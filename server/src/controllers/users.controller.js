@@ -133,7 +133,7 @@ function buildReaderCardView(u) {
         planMonths: raw.cardPlanMonths ?? null,
         issuedAt: raw.libraryCardIssuedAt ?? null,
         expiresAt: raw.libraryCardExpiresAt ?? null,
-        roleType: raw.readerType === 'GiangVien_CanBo' ? 'lecturer' : 'student',
+        roleType: 'student',
         systemType: raw.cardSystemType ?? null,
         status: raw.verificationStatus ?? 'none',
     };
@@ -153,7 +153,6 @@ function toSafeUser(user) {
         phone: raw.phone,
         address: raw.address,
         studentId: raw.studentId || null,
-        staffId: raw.staffId || null,
         readerType: raw.readerType || null,
         verificationStatus: raw.verificationStatus || 'none',
         readerCode: patron,
@@ -161,34 +160,24 @@ function toSafeUser(user) {
     };
 }
 
-async function assertPatronIdsAvailable({ studentId, staffId, readerType, excludeUserId }) {
+async function assertStudentIdAvailable(studentId, excludeUserId) {
     const sid = normalizeCode(studentId);
-    const stid = normalizeCode(staffId);
-    if (!readerType || !READER_TYPES.includes(readerType)) {
-        throw new BadRequestError('Loại bạn đọc không hợp lệ');
+    if (!sid) {
+        throw new BadRequestError('Vui lòng nhập MSV');
     }
-    if (readerType === 'GiangVien_CanBo') {
-        if (!stid || sid) {
-            throw new BadRequestError('Giảng viên/cán bộ vui lòng nhập MSG (không dùng MSV)');
-        }
-    } else if (!sid || stid) {
-        throw new BadRequestError('Sinh viên/học viên/NCS vui lòng nhập MSV (không dùng MSG)');
-    }
-    const dupQ = { $or: [] };
-    if (sid) dupQ.$or.push({ studentId: sid });
-    if (stid) dupQ.$or.push({ staffId: stid });
+    const dupQ = { studentId: sid };
     if (excludeUserId) {
         dupQ._id = { $ne: excludeUserId };
     }
     const dup = await UserMongo.findOne(dupQ);
     if (dup) {
-        throw new BadRequestError('MSV hoặc MSG đã tồn tại');
+        throw new BadRequestError('MSV đã tồn tại');
     }
 }
 
 class controllerUser {
     async adminCreateReader(req, res) {
-        const { fullName, phone, address, email, readerType, studentId, staffId } = req.body;
+        const { fullName, phone, address, email, studentId } = req.body;
         if (!fullName || !phone || !email) {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
@@ -198,7 +187,7 @@ class controllerUser {
             throw new BadRequestError('Email đã tồn tại');
         }
 
-        await assertPatronIdsAvailable({ studentId, staffId, readerType });
+        await assertStudentIdAvailable(studentId);
 
         const passwordPlain = random36() + random36();
         const passwordHash = bcrypt.hashSync(passwordPlain, bcrypt.genSaltSync(10));
@@ -211,16 +200,10 @@ class controllerUser {
             password: passwordHash,
             typeLogin: 'email',
             role: 'user',
-            readerType,
+            readerType: 'SinhVien_ChinhQuy',
+            studentId: normalizeCode(studentId),
             verificationStatus: 'verified',
         };
-        if (readerType === 'GiangVien_CanBo') {
-            payload.staffId = normalizeCode(staffId);
-            payload.studentId = null;
-        } else {
-            payload.studentId = normalizeCode(studentId);
-            payload.staffId = null;
-        }
 
         const dataUser = await UserMongo.create(payload);
 
@@ -230,7 +213,7 @@ class controllerUser {
         new OK({ message: 'Tạo độc giả thành công', metadata: { id: userId, user: toSafeUser(dataUser) } }).send(res);
     }
     async registerUser(req, res) {
-        const { fullName, phone, address, email, password, readerType, studentId, staffId } = req.body;
+        const { fullName, phone, address, email, password, studentId } = req.body;
         if (!fullName || !phone || !email || !password) {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
@@ -240,7 +223,7 @@ class controllerUser {
             throw new BadRequestError('Email đã tồn tại');
         }
 
-        await assertPatronIdsAvailable({ studentId, staffId, readerType });
+        await assertStudentIdAvailable(studentId);
 
         const passwordHash = bcrypt.hashSync(password, bcrypt.genSaltSync(10));
         const payload = {
@@ -252,16 +235,10 @@ class controllerUser {
             password: passwordHash,
             typeLogin: 'email',
             role: 'user',
-            readerType,
+            readerType: 'SinhVien_ChinhQuy',
+            studentId: normalizeCode(studentId),
             verificationStatus: 'verified',
         };
-        if (readerType === 'GiangVien_CanBo') {
-            payload.staffId = normalizeCode(staffId);
-            payload.studentId = null;
-        } else {
-            payload.studentId = normalizeCode(studentId);
-            payload.staffId = null;
-        }
 
         const dataUser = await UserMongo.create(payload);
 
@@ -345,7 +322,7 @@ class controllerUser {
 
     async updateInfoUser(req, res) {
         const { id } = req.user;
-        const { fullName, address, phone, readerType, studentId, staffId } = req.body;
+        const { fullName, address, phone, studentId } = req.body;
         const user = await findUserByAnyId(id);
         if (!user) {
             throw new BadRequestError('Không tìm thấy tài khoản');
@@ -362,20 +339,18 @@ class controllerUser {
         user.avatar = image;
 
         const sid = normalizeCode(studentId);
-        const stid = normalizeCode(staffId);
-        const wantsPatron = (sid || stid) && readerType;
-        if (wantsPatron) {
-            if (user.studentId || user.staffId) {
-                throw new BadRequestError('MSV/MSG đã được gán, không thể đổi qua form này');
+        if (sid) {
+            if (user.studentId) {
+                throw new BadRequestError('MSV đã được gán, không thể đổi qua form này');
             }
-            await assertPatronIdsAvailable({ studentId, staffId, readerType, excludeUserId: user._id });
-            assignPatronCodeToUser(user, sid || stid, readerType);
+            await assertStudentIdAvailable(sid, user._id);
+            assignPatronCodeToUser(user, sid);
             user.verificationStatus = 'verified';
         }
 
         await user.save();
 
-        new OK({ message: 'Cập nhật thông tin tài khoản thành cong' }).send(res);
+        new OK({ message: 'Cập nhật thông tin tài khoản thành công' }).send(res);
     }
 
     async loginGoogle(req, res) {
@@ -588,18 +563,16 @@ class controllerUser {
 
         user.verificationStatus = 'pending';
         user.studentId = null;
-        user.staffId = null;
         user.idStudent = null;
         await user.save();
         new OK({ message: 'Yêu cầu thành công' }).send(res);
     }
 
     async confirmIdStudent(req, res) {
-        const { userId, studentId, staffId, idStudent, readerType } = req.body;
+        const { userId, studentId, idStudent } = req.body;
         const sid = normalizeCode(studentId ?? idStudent);
-        const stid = normalizeCode(staffId);
-        if (!userId || (!sid && !stid)) {
-            throw new BadRequestError('Vui lòng nhập MSV hoặc MSG');
+        if (!userId || !sid) {
+            throw new BadRequestError('Vui lòng nhập MSV');
         }
 
         const user = await findUserByAnyId(userId);
@@ -607,10 +580,8 @@ class controllerUser {
             throw new BadRequestError('Người dùng không tồn tại');
         }
 
-        const rt = readerType || (stid && !sid ? 'GiangVien_CanBo' : 'SinhVien_ChinhQuy');
-        await assertPatronIdsAvailable({ studentId: sid || undefined, staffId: stid || undefined, readerType: rt, excludeUserId: user._id });
-
-        assignPatronCodeToUser(user, sid || stid, rt);
+        await assertStudentIdAvailable(sid, user._id);
+        assignPatronCodeToUser(user, sid);
         user.verificationStatus = 'verified';
         await user.save();
         new OK({ message: 'Xác nhận thành công' }).send(res);
@@ -622,12 +593,9 @@ class controllerUser {
             planMonths,
             readerCode,
             studentId,
-            staffId,
-            readerType,
             birthDate,
             className,
             gender,
-            roleType,
             systemType,
             issuedAt,
         } = req.body;
@@ -641,22 +609,12 @@ class controllerUser {
             throw new BadRequestError('Người dùng không tồn tại');
         }
 
-        const code = normalizeCode(readerCode || studentId || staffId);
+        const code = normalizeCode(readerCode || studentId);
         if (!code) {
-            throw new BadRequestError('Vui lòng nhập MSV hoặc MSG');
+            throw new BadRequestError('Vui lòng nhập MSV');
         }
 
-        let rt = readerType;
-        if (!rt || !READER_TYPES.includes(rt)) {
-            rt = roleType === 'lecturer' ? 'GiangVien_CanBo' : 'SinhVien_ChinhQuy';
-        }
-
-        await assertPatronIdsAvailable({
-            studentId: rt === 'GiangVien_CanBo' ? undefined : code,
-            staffId: rt === 'GiangVien_CanBo' ? code : undefined,
-            readerType: rt,
-            excludeUserId: user._id,
-        });
+        await assertStudentIdAvailable(code, user._id);
 
         const now = new Date();
         const baseIssuedAt = issuedAt ? dayjs(issuedAt) : dayjs(now);
@@ -670,7 +628,7 @@ class controllerUser {
             throw new BadRequestError('Ngày sinh không hợp lệ');
         }
 
-        assignPatronCodeToUser(user, code, rt);
+        assignPatronCodeToUser(user, code);
         user.verificationStatus = 'verified';
         user.cardPlanMonths = months;
         user.libraryCardIssuedAt = issuedAtDate;

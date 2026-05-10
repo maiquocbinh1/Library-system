@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Form, Input, message, Select, DatePicker, Radio, Card } from 'antd';
 import dayjs from 'dayjs';
 import { requestAdminCreateReader, requestIssueReaderCard } from '../../config/request';
-import { READER_TYPE_OPTIONS } from '../../constants/readerTypes';
 
 const CardIssuanceManagement = () => {
     const [loading, setLoading] = useState(false);
@@ -15,9 +14,7 @@ const CardIssuanceManagement = () => {
             email: '',
             phone: '',
             address: '',
-            readerType: 'SinhVien_ChinhQuy',
             studentId: '',
-            staffId: '',
             planMonths: 3,
             birthDate: null,
             className: '',
@@ -36,9 +33,7 @@ const CardIssuanceManagement = () => {
             email: '',
             phone: '',
             address: '',
-            readerType: 'SinhVien_ChinhQuy',
             studentId: '',
-            staffId: '',
             planMonths: 3,
             birthDate: null,
             className: '',
@@ -54,19 +49,15 @@ const CardIssuanceManagement = () => {
     const onCardFormFinish = async (values) => {
         setLoading(true);
         try {
-            const rt = values.readerType;
-            const studentId = rt === 'GiangVien_CanBo' ? undefined : String(values.studentId || '').trim();
-            const staffId = rt === 'GiangVien_CanBo' ? String(values.staffId || '').trim() : undefined;
-            const patronCode = rt === 'GiangVien_CanBo' ? staffId : studentId;
+            const studentId = String(values.studentId || '').trim();
 
             const created = await requestAdminCreateReader({
                 fullName: String(values.fullName || '').trim(),
                 email: String(values.email || '').trim(),
                 phone: String(values.phone || '').trim(),
                 address: String(values.address || '').trim(),
-                readerType: rt,
+                readerType: 'SinhVien_ChinhQuy',
                 studentId,
-                staffId,
             });
             const targetUserId = created?.metadata?.id || created?.metadata?.user?.id || created?.metadata?.user?._id;
 
@@ -77,13 +68,13 @@ const CardIssuanceManagement = () => {
 
             await requestIssueReaderCard({
                 userId: targetUserId,
+                readerCode: studentId,
+                readerType: 'SinhVien_ChinhQuy',
                 planMonths: values.planMonths,
-                readerCode: patronCode,
-                readerType: rt,
                 birthDate: values.birthDate ? values.birthDate.toISOString() : null,
                 className: values.className,
                 gender: values.gender,
-                roleType: rt === 'GiangVien_CanBo' ? 'lecturer' : 'student',
+                roleType: 'student',
                 systemType: values.systemType,
                 issuedAt: values.issuedAt ? values.issuedAt.toISOString() : null,
             });
@@ -115,7 +106,6 @@ const CardIssuanceManagement = () => {
                     layout="vertical"
                     initialValues={{
                         planMonths: 3,
-                        readerType: 'SinhVien_ChinhQuy',
                         gender: 'male',
                         systemType: 'civil',
                         issuedAt: dayjs(),
@@ -136,40 +126,11 @@ const CardIssuanceManagement = () => {
                             <Input className="rounded-xl" placeholder="Nguyễn Văn A" />
                         </Form.Item>
                         <Form.Item
-                            label="Loại bạn đọc"
-                            name="readerType"
-                            rules={[{ required: true, message: 'Vui lòng chọn loại bạn đọc!' }]}
+                            label="MSV (mã sinh viên)"
+                            name="studentId"
+                            rules={[{ required: true, message: 'Vui lòng nhập MSV!' }]}
                         >
-                            <Select className="rounded-xl" options={READER_TYPE_OPTIONS} />
-                        </Form.Item>
-
-                        <Form.Item
-                            noStyle
-                            shouldUpdate={(prev, cur) => prev.readerType !== cur.readerType}
-                        >
-                            {({ getFieldValue }) => {
-                                const rt = getFieldValue('readerType');
-                                if (rt === 'GiangVien_CanBo') {
-                                    return (
-                                        <Form.Item
-                                            label="MSG (mã giảng viên/cán bộ)"
-                                            name="staffId"
-                                            rules={[{ required: true, message: 'Vui lòng nhập MSG!' }]}
-                                        >
-                                            <Input className="rounded-xl" placeholder="MSG" />
-                                        </Form.Item>
-                                    );
-                                }
-                                return (
-                                    <Form.Item
-                                        label="MSV (mã sinh viên)"
-                                        name="studentId"
-                                        rules={[{ required: true, message: 'Vui lòng nhập MSV!' }]}
-                                    >
-                                        <Input className="rounded-xl" placeholder="MSV" />
-                                    </Form.Item>
-                                );
-                            }}
+                            <Input className="rounded-xl" placeholder="VD: B21DCCN001" />
                         </Form.Item>
 
                         <Form.Item label="Gmail" name="email" rules={[{ required: true, message: 'Vui lòng nhập email!' }, { type: 'email', message: 'Email không hợp lệ' }]}>

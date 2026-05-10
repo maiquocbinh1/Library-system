@@ -1,13 +1,31 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Table, Button, Input, Modal, Form, Select, message, Space } from 'antd';
+import { Table, Button, Input, Modal, Form, Select, message, Space, Tag, Tabs } from 'antd';
 import { IdcardOutlined } from '@ant-design/icons';
-import { requestDeleteUser, requestGetAllUsers, requestIssueReaderCard, requestUpdatePassword, requestUpdateUserAdmin } from '../../config/request';
+import { requestDeleteUser, requestGetAllUsers, requestIssueReaderCard, requestUpdatePassword, requestUpdateUserAdmin, requestGetHighRiskUsers } from '../../config/request';
 import { READER_TYPE_OPTIONS } from '../../constants/readerTypes';
 
 const { Search } = Input;
 
+// ── Tính mức độ rủi ro ────────────────────────────────────────────────────
+function getRiskLevel(user, riskMap) {
+    const r = riskMap[user.id] || {};
+    const totalFine = r.totalFine || 0;
+    const overdue = r.overdueBooksCount || 0;
+    if (totalFine > 50000 || overdue >= 3) return 'high';
+    if (totalFine > 0 || overdue >= 1) return 'medium';
+    return 'low';
+}
+
+const riskTag = (level) => {
+    if (level === 'high') return <Tag color="red">Rủi ro cao</Tag>;
+    if (level === 'medium') return <Tag color="orange">Cần theo dõi</Tag>;
+    return <Tag color="green">An toàn</Tag>;
+};
+
 const UserManagement = () => {
     const [data, setData] = useState([]);
+    const [riskMap, setRiskMap] = useState({});
+    const [activeTab, setActiveTab] = useState('all');
     const [isEditModalVisible, setIsEditModalVisible] = useState(false);
     const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
     const [isCardModalVisible, setIsCardModalVisible] = useState(false);
@@ -19,10 +37,14 @@ const UserManagement = () => {
     const [cardForm] = Form.useForm();
 
     const columns = [
-        { title: 'ID', dataIndex: 'id', key: 'id' },
-        { title: 'Tên người dùng', dataIndex: 'fullName', key: 'fullName' },
-        { title: 'Email', dataIndex: 'email', key: 'email' },
-        { title: 'Vai trò', dataIndex: 'role', key: 'role' },
+        { title: 'MSV', key: 'studentId', width: 140, render: (_, r) => r.studentId || r.readerCode || '—' },
+        { title: 'Tên người dùng', dataIndex: 'fullName', key: 'fullName', ellipsis: true },
+        { title: 'Email', dataIndex: 'email', key: 'email', ellipsis: true },
+        { title: 'Vai trò', dataIndex: 'role', key: 'role', width: 120, render: (v) => <Tag color={v === 'admin' ? 'purple' : v === 'librarian' ? 'blue' : 'default'}>{v || '—'}</Tag> },
+        {
+            title: 'Mức độ rủi ro', key: 'risk', width: 140,
+            render: (_, r) => riskTag(getRiskLevel(r, riskMap)),
+        },
         {
             // Align header above the "Kích hoạt" button (not the right-most "Xóa")
             title: (
@@ -92,8 +114,19 @@ const UserManagement = () => {
         setData(normalized);
     };
 
+    const fetchRiskData = async () => {
+        try {
+            const res = await requestGetHighRiskUsers();
+            const list = Array.isArray(res?.metadata) ? res.metadata : [];
+            const map = {};
+            for (const u of list) map[u.id] = u;
+            setRiskMap(map);
+        } catch { /* ignore */ }
+    };
+
     useEffect(() => {
         fetchData();
+        fetchRiskData();
     }, []);
 
     const handleUpdateUser = async () => {
@@ -157,15 +190,30 @@ const UserManagement = () => {
         }
     };
 
-    const filteredData = useMemo(() => data, [data]);
+    const filteredData = useMemo(() => {
+        const users = data.filter((u) => u.role !== 'admin' && u.role !== 'librarian');
+        if (activeTab === 'all') return users;
+        if (activeTab === 'active') return users.filter((u) => u.verificationStatus === 'verified');
+        if (activeTab === 'fined') return users.filter((u) => riskMap[u.id]?.totalFine > 0);
+        if (activeTab === 'overdue') return users.filter((u) => riskMap[u.id]?.overdueBooksCount > 0);
+        return users;
+    }, [data, riskMap, activeTab]);
+
+    const tabItems = [
+        { key: 'all', label: 'Tất cả' },
+        { key: 'active', label: 'Đang hoạt động' },
+        { key: 'fined', label: 'Có nợ phạt' },
+        { key: 'overdue', label: 'Có sách quá hạn' },
+    ];
 
     return (
         <div>
-            <div className="flex justify-between mb-4">
+            <div className="mb-4 flex justify-between">
                 <h2 className="text-2xl font-bold">Quản lý người dùng</h2>
             </div>
-            <Search placeholder="Tìm kiếm người dùng" onSearch={() => {}} style={{ width: 300, marginBottom: 16 }} />
-            <Table columns={columns} dataSource={filteredData} rowKey={(record) => record.id || record.email} />
+            <Search placeholder="Tìm kiếm người dùng" onSearch={() => {}} style={{ width: 300, marginBottom: 12 }} />
+            <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} className="mb-3" />
+            <Table columns={columns} dataSource={filteredData} rowKey={(record) => record.id || record.email} scroll={{ x: 900 }} />
 
             <Modal
                 title="Sửa thông tin người dùng"

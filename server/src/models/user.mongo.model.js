@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const READER_TYPES = ['SinhVien_ChinhQuy', 'GiangVien_CanBo', 'HocVien_NCS'];
+const READER_TYPES = ['SinhVien_ChinhQuy'];
 
 const userMongoSchema = new mongoose.Schema(
     {
@@ -16,8 +16,6 @@ const userMongoSchema = new mongoose.Schema(
 
         /** MSV — sparse unique (không default null để tránh trùng index khi nhiều doc không có MSV) */
         studentId: { type: String, trim: true, sparse: true, unique: true },
-        /** MSG — sparse unique */
-        staffId: { type: String, trim: true, sparse: true, unique: true },
         /** Trường cũ: đồng bộ với MSV khi còn dữ liệu legacy; không dùng làm nghiệp vụ mới */
         idStudent: { type: String, default: null },
 
@@ -42,7 +40,6 @@ const userMongoSchema = new mongoose.Schema(
 
 userMongoSchema.pre('save', function syncLegacyIdStudent(next) {
     if (this.studentId) this.idStudent = this.studentId;
-    else if (this.staffId) this.idStudent = this.staffId;
     next();
 });
 

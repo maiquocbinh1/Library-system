@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Table, Button, Input, Modal, Form, InputNumber, Select, Upload, Popconfirm, Typography, Card, Row, Col, message, Tag } from 'antd';
-import { UploadOutlined, PlusOutlined, DeleteOutlined, SaveOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Table, Button, Input, Modal, Form, InputNumber, Select, Upload, Popconfirm, Typography, Card, Row, Col, message, Tag, Alert } from 'antd';
+import { UploadOutlined, PlusOutlined, DeleteOutlined, SaveOutlined, ReloadOutlined, BarcodeOutlined } from '@ant-design/icons';
 import {
     requestCreateProduct,
     requestDeleteProduct,
@@ -8,7 +8,13 @@ import {
     requestSyncBookCodes,
     requestUpdateProduct,
     requestUploadImageProduct,
+    requestAddCopiesByBarcode,
 } from '../../config/request';
+
+/** Parse textarea barcode: tách bằng dấu phẩy, xuống dòng, dấu chấm phẩy */
+function parseBarcodes(text) {
+    return String(text || '').split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+}
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -35,15 +41,18 @@ function nextBoCodeFromList(list) {
 const BookManagement = () => {
     const [data, setData] = useState([]);
     const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+    const [isAddCopiesModalVisible, setIsAddCopiesModalVisible] = useState(false);
     const [selectedBook, setSelectedBook] = useState(null);
     const [loading, setLoading] = useState(false);
     const [imageUpdating, setImageUpdating] = useState(false);
     const [searchText, setSearchText] = useState('');
     const [addImagePreview, setAddImagePreview] = useState('');
+    const [addCopiesResult, setAddCopiesResult] = useState(null);
     const [tablePagination, setTablePagination] = useState({
         current: 1,
         pageSize: 10,
     });
+    const [addCopiesForm] = Form.useForm();
 
     const [addForm] = Form.useForm();
     const [detailForm] = Form.useForm();
@@ -149,28 +158,57 @@ const BookManagement = () => {
     const onAddFinish = async (values) => {
         try {
             setLoading(true);
-
             if (!values.image?.fileList || values.image.fileList.length === 0) {
                 message.error('Vui lòng chọn ảnh bìa');
                 return;
             }
-
             const formData = new FormData();
             formData.append('image', values.image.fileList[0].originFileObj);
-
             const urlImage = await requestUploadImageProduct(formData);
-            const createData = {
-                ...values,
-                image: urlImage.metadata,
-            };
+
+            // Parse barcodes từ textarea (hoặc dùng stock nếu không có)
+            const barcodesText = values.barcodesText || '';
+            const barcodes = parseBarcodes(barcodesText);
+            const createData = { ...values, image: urlImage.metadata };
+            if (barcodes.length > 0) {
+                createData.barcodes = barcodes;
+                delete createData.stock;
+            }
+            delete createData.barcodesText;
 
             await requestCreateProduct(createData);
-            message.success('Thêm sách thành công');
+            message.success(`Thêm sách thành công${barcodes.length > 0 ? ` với ${barcodes.length} bản sao` : ''}`);
             handleAddCancel();
             fetchData();
         } catch (error) {
             console.error('Add product error:', error);
             message.error(error?.response?.data?.message || 'Không thể thêm sách');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAddCopies = async () => {
+        const bookId = selectedBook?._id || selectedBook?.id;
+        if (!bookId) { message.warning('Vui lòng chọn một cuốn sách trước'); return; }
+        setIsAddCopiesModalVisible(true);
+        setAddCopiesResult(null);
+        addCopiesForm.resetFields();
+    };
+
+    const onAddCopiesFinish = async (values) => {
+        const bookId = selectedBook?._id || selectedBook?.id;
+        const barcodes = parseBarcodes(values.barcodesText);
+        if (!barcodes.length) { message.error('Vui lòng nhập ít nhất 1 mã sách'); return; }
+        try {
+            setLoading(true);
+            const res = await requestAddCopiesByBarcode({ bookId, barcodes });
+            const meta = res?.metadata || {};
+            setAddCopiesResult(meta);
+            message.success(res?.message || 'Thêm bản sao thành công');
+            fetchData();
+        } catch (err) {
+            message.error(err?.response?.data?.message || 'Không thể thêm bản sao');
         } finally {
             setLoading(false);
         }
@@ -502,6 +540,14 @@ const BookManagement = () => {
 
                             <div className="flex flex-wrap gap-2">
                                 <Button
+                                    icon={<BarcodeOutlined />}
+                                    className="h-10 rounded-xl shadow-sm border-green-600 text-green-700"
+                                    onClick={handleAddCopies}
+                                    disabled={!selectedBook}
+                                >
+                                    Nhập bản sao (barcode)
+                                </Button>
+                                <Button
                                     icon={<SaveOutlined />}
                                     type="primary"
                                     className="h-10 rounded-xl bg-blue-600 shadow-sm"
@@ -678,8 +724,16 @@ const BookManagement = () => {
                                     </Form.Item>
                                 </Col>
                                 <Col xs={24} md={12}>
-                                    <Form.Item name="stock" label="Số lượng tồn kho" rules={[{ required: true, message: 'Vui lòng nhập số lượng!' }]}>
-                                        <InputNumber className="w-full rounded-xl" min={0} />
+                                    <Form.Item
+                                        name="barcodesText"
+                                        label="Danh sách mã sách (Barcode)"
+                                        extra="Nhập mã sách cách nhau bằng dấu phẩy. VD: DNT-01, DNT-02, DNT-03"
+                                    >
+                                        <Input.TextArea
+                                            rows={3}
+                                            className="rounded-xl font-mono"
+                                            placeholder="DNT-01, DNT-02, DNT-03"
+                                        />
                                     </Form.Item>
                                 </Col>
                             </Row>
@@ -730,6 +784,45 @@ const BookManagement = () => {
                         </Col>
                     </Row>
                 </Form>
+            </Modal>
+
+            {/* Modal Nhập bản sao bằng barcode */}
+            <Modal
+                title={<><BarcodeOutlined className="mr-2 text-green-600" />Nhập bản sao — {selectedBook?.nameProduct || ''}</>}
+                open={isAddCopiesModalVisible}
+                onCancel={() => { setIsAddCopiesModalVisible(false); setAddCopiesResult(null); addCopiesForm.resetFields(); }}
+                onOk={() => addCopiesForm.submit()}
+                okText="Thêm bản sao"
+                confirmLoading={loading}
+                width={520}
+                destroyOnClose
+            >
+                <p className="mb-3 text-xs text-slate-500">
+                    Nhập từng mã vạch (barcode) dán trên bìa sách, cách nhau bằng dấu phẩy hoặc xuống dòng.
+                </p>
+                <Form form={addCopiesForm} layout="vertical" onFinish={onAddCopiesFinish}>
+                    <Form.Item
+                        name="barcodesText"
+                        label="Danh sách mã sách"
+                        rules={[{ required: true, message: 'Vui lòng nhập ít nhất 1 mã sách' }]}
+                    >
+                        <Input.TextArea
+                            rows={5}
+                            className="rounded-xl font-mono"
+                            placeholder={'DNT-01, DNT-02, DNT-03\nhoặc mỗi mã một dòng'}
+                        />
+                    </Form.Item>
+                </Form>
+                {addCopiesResult && (
+                    <div className="mt-3 space-y-2">
+                        {addCopiesResult.created?.length > 0 && (
+                            <Alert type="success" message={`Đã thêm ${addCopiesResult.created.length} bản sao: ${addCopiesResult.created.join(', ')}`} showIcon />
+                        )}
+                        {addCopiesResult.duplicates?.length > 0 && (
+                            <Alert type="warning" message={`Mã đã tồn tại (bỏ qua): ${addCopiesResult.duplicates.join(', ')}`} showIcon />
+                        )}
+                    </div>
+                )}
             </Modal>
 
             <style>{`

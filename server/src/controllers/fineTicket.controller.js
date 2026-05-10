@@ -28,7 +28,7 @@ function toClientFineRow(fine, userDoc, loanDoc) {
               id: userDoc.mysqlId || String(userDoc._id),
               fullName: userDoc.fullName,
               email: userDoc.email,
-              studentId: userDoc.studentId || userDoc.staffId || userDoc.idStudent || null,
+              studentId: userDoc.studentId || userDoc.idStudent || null,
           }
         : null;
     const loan = loanDoc

@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { Button, Form, Input, Divider, message, Select } from 'antd';
+import { Button, Form, Input, Divider, message } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined, PhoneOutlined, HomeOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { requestRegister } from '../config/request';
-import { READER_TYPE_OPTIONS } from '../constants/readerTypes';
 import { toast } from 'react-toastify';
 import imagesLogin from '../assets/images/login-library.png';
 
@@ -24,12 +23,11 @@ function RegisterUser() {
         }
 
         try {
-            const { readerType, studentId, staffId, ...rest } = values;
+            const { studentId, ...rest } = values;
             await requestRegister({
                 ...rest,
-                readerType,
-                studentId: readerType === 'GiangVien_CanBo' ? undefined : studentId,
-                staffId: readerType === 'GiangVien_CanBo' ? staffId : undefined,
+                readerType: 'SinhVien_ChinhQuy',
+                studentId,
             });
             toast.success('Đăng ký thành công!');
             setLoading(false);
@@ -139,43 +137,11 @@ function RegisterUser() {
                                     </Form.Item>
 
                                     <Form.Item
-                                        name="readerType"
-                                        label="Loại bạn đọc"
-                                        rules={[{ required: true, message: 'Vui lòng chọn loại bạn đọc' }]}
+                                        name="studentId"
+                                        label="MSV (mã sinh viên)"
+                                        rules={[{ required: true, message: 'Vui lòng nhập MSV!' }]}
                                     >
-                                        <Select placeholder="Chọn loại" options={READER_TYPE_OPTIONS} />
-                                    </Form.Item>
-
-                                    <Form.Item
-                                        noStyle
-                                        shouldUpdate={(prev, cur) => prev.readerType !== cur.readerType}
-                                    >
-                                        {({ getFieldValue }) => {
-                                            const rt = getFieldValue('readerType');
-                                            if (rt === 'GiangVien_CanBo') {
-                                                return (
-                                                    <Form.Item
-                                                        name="staffId"
-                                                        label="MSG (mã giảng viên/cán bộ)"
-                                                        rules={[{ required: true, message: 'Vui lòng nhập MSG' }]}
-                                                    >
-                                                        <Input className="rounded-md" placeholder="MSG" />
-                                                    </Form.Item>
-                                                );
-                                            }
-                                            if (rt) {
-                                                return (
-                                                    <Form.Item
-                                                        name="studentId"
-                                                        label="MSV (mã sinh viên)"
-                                                        rules={[{ required: true, message: 'Vui lòng nhập MSV' }]}
-                                                    >
-                                                        <Input className="rounded-md" placeholder="MSV" />
-                                                    </Form.Item>
-                                                );
-                                            }
-                                            return null;
-                                        }}
+                                        <Input className="rounded-md" placeholder="VD: B21DCCN001" />
                                     </Form.Item>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

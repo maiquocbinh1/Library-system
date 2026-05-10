@@ -12,6 +12,7 @@ import {
     DownOutlined,
     ExportOutlined,
     LogoutOutlined,
+    MailOutlined,
     PieChartOutlined,
     SettingOutlined,
     SolutionOutlined,
@@ -20,7 +21,7 @@ import {
     UserSwitchOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 
 import Statistics from './DashbroadComponents/Statistics';
 import BookManagement from './DashbroadComponents/BookManagement';
@@ -30,6 +31,7 @@ import LoanRequestManagement from './DashbroadComponents/LoanRequestManagement';
 import CardIssuanceManagement from './DashbroadComponents/CardIssuanceManagement';
 import FineManagement from './DashbroadComponents/FineManagement';
 import PolicyManagement from './DashbroadComponents/PolicyManagement';
+import EmailLogManagement from './DashbroadComponents/EmailLogManagement';
 import { requestLogout } from '../config/request';
 import { useStore } from '../hooks/useStore';
 import './admin-layout.css';
@@ -41,6 +43,7 @@ const VIEW_COMPONENTS = {
     loan: <LoanRequestManagement presetFilter="approval" pageTitle="Phê duyệt mượn sách" />,
     returns: <LoanRequestManagement presetFilter="returns" pageTitle="Quản lý trả sách" />,
     fines: <FineManagement />,
+    'email-logs': <EmailLogManagement />,
     book: <BookManagement />,
     'book-copies': <BookCopyManagement />,
     'patron-profiles': <UserManagement />,
@@ -62,14 +65,21 @@ function findMenuLabel(items, key) {
     return null;
 }
 
+const sectionLabel = (text) => ({
+    type: 'group',
+    label: <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{text}</span>,
+});
+
 function buildMenuItems(isAdmin) {
     const items = [
+        sectionLabel('Hỗ trợ ra quyết định (EIS/DSS)'),
         {
             key: 'overview',
             icon: <PieChartOutlined />,
-            label: 'Tổng quan',
+            label: 'Dashboard & Phân tích',
             children: [{ key: 'stats', icon: <DashboardOutlined />, label: 'Dashboard / Thống kê' }],
         },
+        sectionLabel('Nghiệp vụ (TPS)'),
         {
             key: 'circulation',
             icon: <AuditOutlined />,
@@ -77,9 +87,11 @@ function buildMenuItems(isAdmin) {
             children: [
                 { key: 'loan', icon: <CheckCircleOutlined />, label: 'Phê duyệt mượn' },
                 { key: 'returns', icon: <ExportOutlined />, label: 'Quản lý Trả sách' },
-                { key: 'fines', icon: <DollarOutlined />, label: 'Quản lý Phạt' },
+                { key: 'fines', icon: <DollarOutlined />, label: 'Thu Phạt' },
+                { key: 'email-logs', icon: <MailOutlined />, label: 'Nhật ký gửi thư' },
             ],
         },
+        sectionLabel('Kho & Danh mục'),
         {
             key: 'inventory',
             icon: <DatabaseOutlined />,
@@ -89,6 +101,7 @@ function buildMenuItems(isAdmin) {
                 { key: 'book-copies', icon: <BarcodeOutlined />, label: 'Bản sao & Barcode' },
             ],
         },
+        sectionLabel('Quản lý Độc giả'),
         {
             key: 'patrons',
             icon: <UserOutlined />,
@@ -101,10 +114,11 @@ function buildMenuItems(isAdmin) {
     ];
 
     if (isAdmin) {
+        items.push(sectionLabel('Quản trị Hệ thống'));
         items.push({
             key: 'system',
             icon: <SettingOutlined />,
-            label: 'Hệ thống',
+            label: 'Quản trị Hệ thống',
             children: [
                 { key: 'policy', icon: <ControlOutlined />, label: 'Cấu hình chính sách' },
                 { key: 'user', icon: <UserSwitchOutlined />, label: 'Tài khoản thủ thư & phân quyền' },

@@ -31,4 +31,7 @@ router.get('/book-copies', authUser, libraryStaff, asyncHandler(controllerBook.l
 router.post('/update', authUser, libraryStaff, asyncHandler(controllerBook.updateProduct));
 router.post('/delete', authUser, libraryStaff, asyncHandler(controllerBook.deleteProduct));
 
+/** Thêm bản sao bằng barcode thủ công */
+router.post('/add-copies-by-barcode', authUser, libraryStaff, asyncHandler(controllerBook.addCopiesByBarcode));
+
 module.exports = router;

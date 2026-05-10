@@ -6,13 +6,12 @@ import { toast } from 'react-toastify';
 import { useStore } from '../../hooks/useStore';
 
 const PersonalInfo = () => {
-    const [loading, setLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
     const [form] = Form.useForm();
 
     const { dataUser, refreshAuth } = useStore();
     const readerCode =
-        dataUser?.readerCode || dataUser?.staffId || dataUser?.studentId || dataUser?.idStudent || null;
+        dataUser?.readerCode || dataUser?.studentId || dataUser?.idStudent || null;
     const isReaderCodePending =
         dataUser?.verificationStatus === 'pending' || readerCode === '0';
     const hasReaderCode = Boolean(readerCode && readerCode !== '0');

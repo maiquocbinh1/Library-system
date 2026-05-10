@@ -44,7 +44,7 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
     const [loanDaysMax, setLoanDaysMax] = useState(DEFAULT_LOAN_DAYS_FALLBACK);
     const { dataUser } = useStore();
 
-    const today = useMemo(() => dayjs(), [visible]);
+    const today = useMemo(() => dayjs(), []);
 
     const minReturnDate = useMemo(() => today.add(1, 'day'), [today]);
     const maxReturnDate = useMemo(() => today.add(loanDaysMax, 'day'), [today, loanDaysMax]);
@@ -74,7 +74,7 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
                 address: dataUser?.address || '',
                 phoneNumber: dataUser?.phone || dataUser?.phoneNumber || '',
                 studentId:
-                    dataUser?.studentId || dataUser?.staffId || dataUser?.idStudent || dataUser?.readerCode || '',
+                    dataUser?.studentId || dataUser?.idStudent || dataUser?.readerCode || '',
                 returnDate: minReturnDate,
             });
         }

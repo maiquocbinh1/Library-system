@@ -1,7 +1,12 @@
 const mongoose = require('mongoose');
+const dns = require('dns');
 const AdminMongo = require('../models/admin.mongo.model');
 const UserMongo = require('../models/user.mongo.model');
 const { assignPatronCodeToUser, normalizeCode } = require('../utils/patronUser');
+
+// Override DNS resolver sang Google + Cloudflare DNS
+// Khắc phục lỗi `querySrv ECONNREFUSED` khi ISP local chặn DNS SRV của MongoDB Atlas
+dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
 
 async function migrateLegacyPatronData() {
     const db = mongoose.connection.db;
@@ -18,9 +23,8 @@ async function migrateLegacyPatronData() {
         if (!user) continue;
         const code = rc.readerCode ? normalizeCode(rc.readerCode) : '';
         if (!code) continue;
-        if (user.studentId || user.staffId) continue;
-        const readerTypeFromCard = rc.roleType === 'lecturer' ? 'GiangVien_CanBo' : 'SinhVien_ChinhQuy';
-        assignPatronCodeToUser(user, code, readerTypeFromCard);
+        if (user.studentId) continue;
+        assignPatronCodeToUser(user, code);
         if (rc.status === 'approved') user.verificationStatus = 'verified';
         user.birthDate = rc.birthDate ?? user.birthDate;
         user.className = rc.className ?? user.className;
@@ -39,7 +43,7 @@ async function migrateLegacyPatronData() {
     const cursor = UserMongo.find({});
     for await (const u of cursor) {
         const legacy = u.idStudent != null ? String(u.idStudent).trim() : '';
-        if (u.studentId || u.staffId) continue;
+        if (u.studentId) continue;
         if (!legacy) continue;
         if (legacy === '0') {
             if (u.verificationStatus !== 'pending') {

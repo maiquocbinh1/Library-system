@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const READER_TYPES = ['SinhVien_ChinhQuy', 'GiangVien_CanBo', 'HocVien_NCS'];
+const READER_TYPES = ['SinhVien_ChinhQuy'];
 
 const policyMongoSchema = new mongoose.Schema(
     {

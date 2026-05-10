@@ -1,7 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Card, Table, Tag, Button, message, Input, Space } from 'antd';
+import { Card, Table, Tag, Button, message, Input, Space, Row, Col, Statistic } from 'antd';
+import { ExportOutlined, DollarCircleOutlined, WarningOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { requestGetAllFines, requestPayFine } from '../../config/request';
 import dayjs from 'dayjs';
+import * as XLSX from 'xlsx';
+
+function exportToExcel(data) {
+    const rows = data.map((r) => ({
+        MSV: r?.user?.studentId || r?.studentId || '—',
+        'Họ tên': r?.user?.fullName || '—',
+        'Số ngày trễ': r?.overdueDays || 0,
+        'Tiền phạt (VNĐ)': r?.fineAmount || 0,
+        'Lý do': r?.reason || '',
+        'Trạng thái': r?.status === 'PAID' ? 'Đã nộp' : 'Chưa nộp',
+        'Ngày tạo': r?.createdAt ? dayjs(r.createdAt).format('DD/MM/YYYY') : '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Phiếu phạt');
+    XLSX.writeFile(wb, 'danh_sach_phat.xlsx');
+}
 
 const FineManagement = () => {
     const [data, setData] = useState([]);
@@ -115,8 +133,41 @@ const FineManagement = () => {
         },
     ];
 
+    const totalUnpaid = useMemo(() => data.filter((r) => r.status === 'UNPAID').reduce((s, r) => s + Number(r.fineAmount || 0), 0), [data]);
+    const todayCollected = useMemo(() => {
+        const today = dayjs().format('YYYY-MM-DD');
+        return data.filter((r) => r.status === 'PAID' && dayjs(r.updatedAt || r.createdAt).format('YYYY-MM-DD') === today)
+            .reduce((s, r) => s + Number(r.fineAmount || 0), 0);
+    }, [data]);
+    const unpaidCount = useMemo(() => data.filter((r) => r.status === 'UNPAID').length, [data]);
+
     return (
         <div className="flex flex-col gap-4">
+            {/* 3 thẻ tổng quan */}
+            <Row gutter={16}>
+                <Col xs={24} sm={8}>
+                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 14 }}>
+                        <Statistic title={<span className="text-slate-500 text-xs">Tổng nợ phạt chưa thu</span>}
+                            value={totalUnpaid} formatter={(v) => `${Number(v).toLocaleString('vi-VN')} đ`}
+                            prefix={<WarningOutlined className="text-red-500" />} valueStyle={{ color: '#ef4444' }} />
+                    </Card>
+                </Col>
+                <Col xs={24} sm={8}>
+                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 14 }}>
+                        <Statistic title={<span className="text-slate-500 text-xs">Đã thu hôm nay</span>}
+                            value={todayCollected} formatter={(v) => `${Number(v).toLocaleString('vi-VN')} đ`}
+                            prefix={<DollarCircleOutlined className="text-green-600" />} valueStyle={{ color: '#16a34a' }} />
+                    </Card>
+                </Col>
+                <Col xs={24} sm={8}>
+                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 14 }}>
+                        <Statistic title={<span className="text-slate-500 text-xs">Phiếu phạt chưa thanh toán</span>}
+                            value={unpaidCount} suffix="phiếu"
+                            prefix={<CheckCircleOutlined className="text-amber-500" />} valueStyle={{ color: '#f59e0b' }} />
+                    </Card>
+                </Col>
+            </Row>
+
             <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-xl font-bold text-slate-900">Quản lý Phạt</h2>
@@ -128,9 +179,8 @@ const FineManagement = () => {
                             value={searchText}
                             onChange={(e) => setSearchText(e.target.value)}
                         />
-                        <Button onClick={() => fetchData()} loading={loading}>
-                            Làm mới
-                        </Button>
+                        <Button icon={<ExportOutlined />} onClick={() => exportToExcel(filtered)}>Xuất Excel</Button>
+                        <Button onClick={() => fetchData()} loading={loading}>Làm mới</Button>
                     </Space>
                 </div>
                 <Table
