@@ -39,6 +39,7 @@ router.post('/upload-image', upload.single('image'), authUser, asyncHandler(cont
 router.post('/request-id-student', authUser, asyncHandler(controllerUser.requestIdStudent));
 router.post('/confirm-id-student', authUser, libraryStaff, asyncHandler(controllerUser.confirmIdStudent));
 router.post('/issue-reader-card', authUser, libraryStaff, asyncHandler(controllerUser.issueReaderCard));
+router.post('/set-patron-lock', authUser, libraryStaff, asyncHandler(controllerUser.setPatronLock));
 router.post('/admin-create-reader', authUser, libraryStaff, asyncHandler(controllerUser.adminCreateReader));
 router.get('/get-request-loan', authUser, isAdmin, asyncHandler(controllerUser.getRequestLoan));
 router.get('/statistics', authUser, libraryStaff, asyncHandler(controllerUser.getStatistics));

@@ -11,6 +11,8 @@ router.get('/', asyncHandler(policyController.getPolicies));
 /** Theo loại bạn đọc: /api/policy/reader-type/SinhVien_ChinhQuy */
 router.get('/reader-type/:readerType', asyncHandler(policyController.getPolicyByReaderType));
 
+router.post('/refresh-circulation-sample', authUser, isAdmin, asyncHandler(policyController.refreshCirculationSample));
+
 router.post('/', authUser, isAdmin, asyncHandler(policyController.createPolicy));
 router.put('/:id', authUser, isAdmin, asyncHandler(policyController.updatePolicy));
 router.delete('/:id', authUser, isAdmin, asyncHandler(policyController.deletePolicy));

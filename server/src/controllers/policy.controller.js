@@ -3,6 +3,15 @@ const PolicyMongo = require('../models/policy.mongo.model');
 const { READER_TYPES } = require('../models/policy.mongo.model');
 const { BadRequestError } = require('../core/error.response');
 const { OK, Created } = require('../core/success.response');
+const { resetCirculationSamplePatronsState } = require('../services/circulationSampleReset.service');
+
+const RENEW_EXT_ALLOWED = new Set([7, 14]);
+
+function normalizeRenewExtensionDays(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || !RENEW_EXT_ALLOWED.has(n)) return null;
+    return n;
+}
 
 function toClientPolicy(doc) {
     const raw = doc.toObject ? doc.toObject() : doc;
@@ -48,7 +57,7 @@ class policyController {
     }
 
     async createPolicy(req, res) {
-        const { readerType, maxBooks, loanDays, overdueFinePerDay } = req.body;
+        const { readerType, maxBooks, loanDays, overdueFinePerDay, renewExtensionDays } = req.body;
         if (!readerType || !READER_TYPES.includes(String(readerType))) {
             throw new BadRequestError('readerType không hợp lệ');
         }
@@ -64,6 +73,10 @@ class policyController {
         if (!Number.isFinite(fine) || fine < 0) {
             throw new BadRequestError('overdueFinePerDay không hợp lệ');
         }
+        const renewExt = normalizeRenewExtensionDays(renewExtensionDays);
+        if (renewExtensionDays !== undefined && renewExtensionDays !== null && renewExt === null) {
+            throw new BadRequestError('renewExtensionDays chỉ được phép là 7 (1 tuần) hoặc 14 (2 tuần)');
+        }
 
         const existed = await PolicyMongo.findOne({ readerType }).lean();
         if (existed) {
@@ -74,6 +87,7 @@ class policyController {
             readerType,
             maxBooks: maxB,
             loanDays: loanD,
+            renewExtensionDays: renewExt ?? 14,
             overdueFinePerDay: fine,
         });
 
@@ -93,7 +107,7 @@ class policyController {
             throw new BadRequestError('Chính sách không tồn tại');
         }
 
-        const { maxBooks, loanDays, overdueFinePerDay, readerType } = req.body;
+        const { maxBooks, loanDays, overdueFinePerDay, readerType, renewExtensionDays } = req.body;
 
         if (readerType !== undefined) {
             const rt = String(readerType).trim();
@@ -116,6 +130,11 @@ class policyController {
             const n = Number(loanDays);
             if (!Number.isFinite(n) || n < 1) throw new BadRequestError('loanDays không hợp lệ');
             policy.loanDays = n;
+        }
+        if (renewExtensionDays !== undefined) {
+            const r = normalizeRenewExtensionDays(renewExtensionDays);
+            if (r === null) throw new BadRequestError('renewExtensionDays chỉ được phép là 7 (1 tuần) hoặc 14 (2 tuần)');
+            policy.renewExtensionDays = r;
         }
         if (overdueFinePerDay !== undefined) {
             const n = Number(overdueFinePerDay);
@@ -143,6 +162,21 @@ class policyController {
         new OK({
             message: 'Xóa chính sách thành công',
             metadata: { deleted: true },
+        }).send(res);
+    }
+
+    /**
+     * Đặt lại phiếu mượn / phạt của độc giả mẫu quầy (MSV seed circulation) và trả bản sao về kho.
+     * POST /api/policy/refresh-circulation-sample — chỉ admin.
+     */
+    async refreshCirculationSample(req, res) {
+        const metadata = await resetCirculationSamplePatronsState();
+        new OK({
+            message:
+                metadata.patronCount > 0
+                    ? 'Đã làm mới trạng thái dữ liệu mẫu quầy (phiếu mượn, phạt, bản sao).'
+                    : 'Không tìm thấy độc giả mẫu quầy trong CSDL.',
+            metadata,
         }).send(res);
     }
 }

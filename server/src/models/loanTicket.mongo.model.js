@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const LOAN_TICKET_STATUS = ['PENDING_APPROVAL', 'BORROWING', 'RETURNED', 'OVERDUE', 'CANCELLED'];
+const LOAN_TICKET_STATUS = ['PENDING_APPROVAL', 'BORROWING', 'OVERDUE', 'RETURNED', 'CANCELLED'];
 
 const loanTicketMongoSchema = new mongoose.Schema(
     {
@@ -9,17 +9,16 @@ const loanTicketMongoSchema = new mongoose.Schema(
         fullName: { type: String, required: true },
         phone: { type: String, default: null },
         address: { type: String, default: null },
-        /** Danh sách bản sao vật lý (mã vạch) gắn với phiếu — thay cho bookId + quantity */
+        bookId: { type: mongoose.Schema.Types.ObjectId, ref: 'BookMongo', default: null, index: true },
+        requestedQuantity: { type: Number, default: null },
+        /** Số lần đã gia hạn (tối đa 1 theo quy định thư viện) */
+        renewalCount: { type: Number, default: 0 },
         bookCopyIds: {
             type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'BookCopyMongo' }],
-            required: true,
-            validate: [(v) => Array.isArray(v) && v.length > 0, 'Cần ít nhất một bản sao'],
+            default: [],
         },
-        /** Ngày gửi yêu cầu / mượn (theo form) */
         borrowDate: { type: Date, required: true },
-        /** Ngày phải trả — gán khi duyệt (duyệt + loanDays theo Policy) */
         dueDate: { type: Date, default: null, index: true },
-        /** Ngày trả thực tế khi hoàn tất */
         returnedAt: { type: Date, default: null },
         status: {
             type: String,

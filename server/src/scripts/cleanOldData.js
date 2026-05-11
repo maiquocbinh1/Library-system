@@ -6,15 +6,11 @@
  * Chạy từ thư mục server: node src/scripts/cleanOldData.js
  * (cần MONGODB_URI trong server/.env)
  */
-const path = require('path');
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
+const { connectSeedMongo, disconnectSeedMongo } = require('./mongoSeedConnect');
 
 const UserMongo = require('../models/user.mongo.model');
 const LoanTicketMongo = require('../models/loanTicket.mongo.model');
 const FineTicketMongo = require('../models/fineTicket.mongo.model');
-
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 /** user1@gmail.com … user18@gmail.com */
 const MOCK_USER_GMAIL_REGEX = /^user([1-9]|1[0-8])@gmail\.com$/i;
@@ -75,12 +71,7 @@ async function deleteUsersAndRelatedTickets(toRemove) {
 }
 
 async function run() {
-    const uri = process.env.MONGODB_URI;
-    if (!uri) {
-        throw new Error('Thiếu MONGODB_URI trong .env');
-    }
-
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 20000 });
+    await connectSeedMongo();
     console.log('[cleanOldData] Đã kết nối MongoDB\n');
 
     try {
@@ -116,7 +107,7 @@ async function run() {
         console.log(`  - FineTicketMongo: ${counts.fines}`);
         console.log('\n[cleanOldData] Hoàn tất.');
     } finally {
-        await mongoose.disconnect();
+        await disconnectSeedMongo();
     }
 }
 

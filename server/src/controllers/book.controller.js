@@ -90,6 +90,37 @@ async function findBookByAnyId(id) {
     return BookMongo.findOne({ mysqlId: String(id) });
 }
 
+async function findBookCopyByAnyId(id) {
+    if (!id) return null;
+    if (mongoose.isValidObjectId(id)) {
+        const c = await BookCopyMongo.findById(id);
+        if (c) return c;
+    }
+    return BookCopyMongo.findOne({ mysqlId: String(id) });
+}
+
+function escapeRegex(s) {
+    return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function toClientBookCopyRow(copyLean, bookLean) {
+    const b = bookLean;
+    const title = b?.title || b?.nameProduct || '';
+    return {
+        id: copyLean.mysqlId || String(copyLean._id),
+        _id: String(copyLean._id),
+        barcode: copyLean.barcode,
+        status: copyLean.status,
+        condition: copyLean.condition,
+        bookId: String(copyLean.bookId),
+        bookCode: b?.bookCode || '',
+        title,
+        nameProduct: title,
+        createdAt: copyLean.createdAt,
+        updatedAt: copyLean.updatedAt,
+    };
+}
+
 let legacyMigrationDone = false;
 
 /**
@@ -301,37 +332,172 @@ class controllerBook {
         }).send(res);
     }
 
-    /** Danh sách bản sao (barcode) — kho */
+    /** Danh sách bản sao (barcode) — kho. Query: bookId, status, keyword, limit */
     async listAllBookCopies(req, res) {
         await ensureLegacyBooks();
 
-        const copies = await BookCopyMongo.find({}).sort({ createdAt: -1 }).limit(3000).lean();
+        const { bookId: qBookId, status: qStatus, keyword } = req.query;
+        const limit = Math.min(5000, Math.max(1, Number(req.query.limit) || 3000));
+
+        const filter = {};
+        if (qBookId && mongoose.isValidObjectId(String(qBookId))) {
+            filter.bookId = qBookId;
+        }
+        if (qStatus && String(qStatus).trim()) {
+            filter.status = String(qStatus).trim().toUpperCase();
+        }
+
+        const kw = String(keyword || '').trim();
+        if (kw) {
+            const rx = new RegExp(escapeRegex(kw), 'i');
+            const bookHits = await BookMongo.find({
+                $or: [{ title: rx }, { nameProduct: rx }, { bookCode: rx }],
+            })
+                .distinct('_id');
+            filter.$or = [{ barcode: rx }, { bookId: { $in: bookHits } }];
+        }
+
+        const copies = await BookCopyMongo.find(filter).sort({ createdAt: -1 }).limit(limit).lean();
+
         const bookIds = [...new Set(copies.map((c) => c.bookId).filter(Boolean))];
         const books = await BookMongo.find({ _id: { $in: bookIds } })
             .select('title nameProduct bookCode')
             .lean();
         const bookMap = new Map(books.map((b) => [String(b._id), b]));
 
-        const metadata = copies.map((c) => {
-            const b = bookMap.get(String(c.bookId));
-            const title = b?.title || b?.nameProduct || '';
-            return {
-                id: c.mysqlId || String(c._id),
-                _id: String(c._id),
-                barcode: c.barcode,
-                status: c.status,
-                condition: c.condition,
-                bookId: String(c.bookId),
-                bookCode: b?.bookCode || '',
-                title,
-                nameProduct: title,
-            };
-        });
+        const metadata = copies.map((c) => toClientBookCopyRow(c, bookMap.get(String(c.bookId))));
 
         new OK({
             message: 'Lấy danh sách bản sao thành công',
             metadata,
         }).send(res);
+    }
+
+    /** Chi tiết một bản sao — GET /api/product/book-copy?id= */
+    async getBookCopy(req, res) {
+        await ensureLegacyBooks();
+        const id = String(req.query.id || '').trim();
+        if (!id) throw new BadRequestError('Thiếu id bản sao');
+
+        const copy = await findBookCopyByAnyId(id);
+        if (!copy) {
+            new OK({ message: 'Không tìm thấy', metadata: null }).send(res);
+            return;
+        }
+        const lean = copy.toObject ? copy.toObject() : copy;
+        const book = await BookMongo.findById(lean.bookId).select('title nameProduct bookCode').lean();
+        new OK({
+            message: 'OK',
+            metadata: toClientBookCopyRow(lean, book),
+        }).send(res);
+    }
+
+    /** Tạo một bản sao — POST /api/product/book-copy  body: { bookId, barcode, condition? } */
+    async createBookCopy(req, res) {
+        await ensureLegacyBooks();
+        const { bookId, barcode, condition } = req.body || {};
+        if (!bookId) throw new BadRequestError('Thiếu bookId');
+        if (!barcode || !String(barcode).trim()) throw new BadRequestError('Thiếu barcode');
+
+        const book = await findBookByAnyId(bookId);
+        if (!book) throw new BadRequestError('Sách không tồn tại');
+
+        const { created, duplicates } = await createBookCopiesFromBarcodes(book._id, [barcode]);
+        if (duplicates.length) throw new BadRequestError(`Barcode đã tồn tại: ${duplicates.join(', ')}`);
+        if (!created.length) throw new BadRequestError('Không tạo được bản sao');
+
+        const doc = await findBookCopyByAnyId(created[0]._id);
+        const allowedCond = ['NEW', 'GOOD', 'FAIR', 'POOR', 'DAMAGED'];
+        if (condition && allowedCond.includes(String(condition).toUpperCase())) {
+            doc.condition = String(condition).toUpperCase();
+            await doc.save();
+        }
+
+        await syncBookInventoryFields(book._id);
+        const lean = doc.toObject ? doc.toObject() : doc;
+        const b = await BookMongo.findById(lean.bookId).select('title nameProduct bookCode').lean();
+        new Created({
+            message: 'Đã thêm bản sao',
+            metadata: toClientBookCopyRow(lean, b),
+        }).send(res);
+    }
+
+    /** Cập nhật bản sao — PUT /api/product/book-copy  body: { id, barcode?, condition?, status? } */
+    async updateBookCopy(req, res) {
+        await ensureLegacyBooks();
+        const { id, barcode, condition, status } = req.body || {};
+        if (!id) throw new BadRequestError('Thiếu id bản sao');
+
+        const copy = await findBookCopyByAnyId(id);
+        if (!copy) throw new BadRequestError('Không tìm thấy bản sao');
+
+        const allowedCond = ['NEW', 'GOOD', 'FAIR', 'POOR', 'DAMAGED'];
+        const allowedStatusStaff = ['AVAILABLE', 'RESERVED', 'MAINTENANCE', 'LOST'];
+
+        if (barcode !== undefined) {
+            if (copy.status !== 'AVAILABLE') {
+                throw new BadRequestError('Chỉ đổi barcode khi bản sao đang ở trạng thái sẵn sàng');
+            }
+            const b = String(barcode || '').trim().toUpperCase();
+            if (!b) throw new BadRequestError('Barcode không hợp lệ');
+            const clash = await BookCopyMongo.findOne({ barcode: b, _id: { $ne: copy._id } }).select('_id').lean();
+            if (clash) throw new BadRequestError('Barcode đã được sử dụng');
+            copy.barcode = b;
+        }
+
+        if (condition !== undefined) {
+            const c = String(condition || '').trim().toUpperCase();
+            if (!allowedCond.includes(c)) throw new BadRequestError('Tình trạng bản không hợp lệ');
+            copy.condition = c;
+        }
+
+        if (status !== undefined) {
+            const s = String(status || '').trim().toUpperCase();
+            if (!allowedStatusStaff.includes(s)) {
+                throw new BadRequestError('Không thể đặt trạng thái này từ API quản lý (mượn/trả do hệ thống lưu thông)');
+            }
+            if (copy.status === 'BORROWED') {
+                throw new BadRequestError('Đang mượn — không đổi trạng thái tại đây; dùng trả sách');
+            }
+            copy.status = s;
+        }
+
+        await copy.save();
+        await syncBookInventoryFields(copy.bookId);
+
+        const lean = copy.toObject ? copy.toObject() : copy;
+        const book = await BookMongo.findById(lean.bookId).select('title nameProduct bookCode').lean();
+        new OK({
+            message: 'Cập nhật bản sao thành công',
+            metadata: toClientBookCopyRow(lean, book),
+        }).send(res);
+    }
+
+    /** Xóa bản sao (chỉ khi AVAILABLE và không nằm trên phiếu đang hoạt động) — DELETE /api/product/book-copy?id= */
+    async deleteBookCopy(req, res) {
+        await ensureLegacyBooks();
+        const id = String(req.query.id || req.body?.id || '').trim();
+        if (!id) throw new BadRequestError('Thiếu id bản sao');
+
+        const copy = await findBookCopyByAnyId(id);
+        if (!copy) throw new BadRequestError('Không tìm thấy bản sao');
+        if (copy.status !== 'AVAILABLE') {
+            throw new BadRequestError('Chỉ xóa bản sao đang sẵn sàng (AVAILABLE)');
+        }
+
+        const activeLoan = await LoanTicketMongo.findOne({
+            bookCopyIds: copy._id,
+            status: { $in: ['PENDING_APPROVAL', 'BORROWING', 'OVERDUE'] },
+        })
+            .select('_id')
+            .lean();
+        if (activeLoan) throw new BadRequestError('Bản sao đang trên phiếu mượn — không xóa được');
+
+        const bookId = copy.bookId;
+        await BookCopyMongo.deleteOne({ _id: copy._id });
+        await syncBookInventoryFields(bookId);
+
+        new OK({ message: 'Đã xóa bản sao', metadata: { id: String(copy._id) } }).send(res);
     }
 
     async getOneProduct(req, res) {

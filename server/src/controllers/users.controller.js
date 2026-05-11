@@ -490,6 +490,22 @@ class controllerUser {
         new OK({ message: 'Cập nhật người dùng thành công' }).send(res);
     }
 
+    /** Thủ thư / Admin: khóa hoặc mở khóa thẻ mượn (không cho mượn khi khóa). */
+    async setPatronLock(req, res) {
+        const { userId, blocked } = req.body;
+        if (!userId) throw new BadRequestError('Thiếu userId');
+        const user = await findUserByAnyId(userId);
+        if (!user) throw new BadRequestError('Người dùng không tồn tại');
+        if (user.role === 'admin' || user.role === 'librarian') {
+            throw new BadRequestError('Không áp dụng cho tài khoản nhân sự');
+        }
+        user.libraryCardBlocked = Boolean(blocked);
+        await user.save();
+        new OK({
+            message: blocked ? 'Đã khóa thẻ độc giả' : 'Đã mở khóa thẻ độc giả',
+        }).send(res);
+    }
+
     async changeAvatar(req, res) {
         const { file } = req;
         const { id } = req.user;

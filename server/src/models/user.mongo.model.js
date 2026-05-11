@@ -34,6 +34,8 @@ const userMongoSchema = new mongoose.Schema(
         cardPlanMonths: { type: Number, default: null },
         libraryCardIssuedAt: { type: Date, default: null },
         libraryCardExpiresAt: { type: Date, default: null, index: true },
+        /** Thủ thư/Admin khóa thẻ — không cho mượn dù còn MSV */
+        libraryCardBlocked: { type: Boolean, default: false, index: true },
     },
     { timestamps: true, collection: 'library_users' },
 );

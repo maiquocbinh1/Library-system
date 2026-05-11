@@ -7,7 +7,13 @@
         "seed:google-books": "node src/scripts/importGoogleBooks.js",
         "seed:admin": "node src/scripts/seedAdmin.js",
         "seed:test-student": "node src/scripts/seedTestStudent.js",
+        "seed:demo-borrow": "node src/scripts/seedDemoBorrowFlows.js",
         "seed:policies": "node src/scripts/seedPolicies.js",
+        "seed:circulation-sample": "node src/scripts/seedCirculationSample.js",
+        "seed:ptit-bulk": "node src/scripts/seedPtitBulkDemo.js",
+        "import:books-json": "node src/scripts/importBooksProductsJson.js",
+        "cleanup:users-demo-admin": "node src/scripts/cleanupUsersKeepDemoAdmin.js",
+        "sync:upload-images": "node src/scripts/syncUploadImagesFromUrl.js",
         "test": "echo \"Error: no test specified\" && exit 1"
     },
     "keywords": [],

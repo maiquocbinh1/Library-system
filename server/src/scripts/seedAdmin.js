@@ -1,28 +1,21 @@
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
+
+const { connectSeedMongo, disconnectSeedMongo } = require('./mongoSeedConnect');
 
 const UserMongo = require('../models/user.mongo.model');
 const AdminMongo = require('../models/admin.mongo.model');
-
-dotenv.config();
 
 function random36() {
     return crypto.randomUUID();
 }
 
 async function run() {
-    const uri = process.env.MONGODB_URI;
-    if (!uri) {
-        throw new Error('Thiếu MONGODB_URI trong file .env');
-    }
+    await connectSeedMongo();
 
     const adminEmail = String(process.env.ADMIN_EMAIL || 'admin@ptit.edu.vn').toLowerCase();
     const adminPassword = String(process.env.ADMIN_PASSWORD || 'Admin@123456');
     const adminFullName = String(process.env.ADMIN_FULLNAME || 'Quản trị hệ thống');
-
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 20000 });
 
     try {
         let user = await UserMongo.findOne({ email: adminEmail });
@@ -67,7 +60,7 @@ async function run() {
         console.log(`Mật khẩu admin: ${adminPassword}`);
         console.log('Vui lòng đổi mật khẩu sau khi đăng nhập.');
     } finally {
-        await mongoose.disconnect();
+        await disconnectSeedMongo();
     }
 }
 

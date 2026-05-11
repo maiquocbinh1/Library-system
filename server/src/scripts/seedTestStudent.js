@@ -7,17 +7,15 @@
  */
 
 const crypto = require('crypto');
-const path = require('path');
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
-const dotenv = require('dotenv');
+
+const { connectSeedMongo, disconnectSeedMongo } = require('./mongoSeedConnect');
 
 const UserMongo = require('../models/user.mongo.model');
 const ApiKeyMongo = require('../models/apiKey.mongo.model');
 const LoanTicketMongo = require('../models/loanTicket.mongo.model');
 const FineTicketMongo = require('../models/fineTicket.mongo.model');
-
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const PTIT_SEED = [
     {
@@ -164,10 +162,7 @@ async function seedPtitAccounts(passwordHash) {
 }
 
 async function run() {
-    const uri = process.env.MONGODB_URI;
-    if (!uri) throw new Error('Thiếu MONGODB_URI trong file .env (thư mục server)');
-
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 20000 });
+    await connectSeedMongo();
     console.log('[seed-test-student] Đã kết nối MongoDB\n');
 
     const passwordHash = bcrypt.hashSync(DEFAULT_PASSWORD, bcrypt.genSaltSync(10));
@@ -183,7 +178,7 @@ async function run() {
         }
         console.log('==================================================\n');
     } finally {
-        await mongoose.disconnect();
+        await disconnectSeedMongo();
     }
 }
 

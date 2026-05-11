@@ -24,11 +24,16 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Uploads — keep folder, ignore user files
+# Uploads — ảnh bìa sách trong repo; avatar chỉ giữ .gitkeep (file user không commit)
 server/src/uploads/**
 !server/src/uploads/.gitkeep
+!server/src/uploads/products/
+!server/src/uploads/products/**
+!server/src/uploads/avatars/
+!server/src/uploads/avatars/.gitkeep
 
-# OS / editor
+# Python
+__pycache__/
 .DS_Store
 **/.DS_Store
 Thumbs.db

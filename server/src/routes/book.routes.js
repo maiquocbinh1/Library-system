@@ -28,6 +28,11 @@ router.get('/get-all', asyncHandler(controllerBook.getAllProduct));
 router.get('/get-one', asyncHandler(controllerBook.getOneProduct));
 router.get('/search', asyncHandler(controllerBook.searchProduct));
 router.get('/book-copies', authUser, libraryStaff, asyncHandler(controllerBook.listAllBookCopies));
+router.get('/book-copy', authUser, libraryStaff, asyncHandler(controllerBook.getBookCopy));
+router.post('/book-copy', authUser, libraryStaff, asyncHandler(controllerBook.createBookCopy));
+router.put('/book-copy', authUser, libraryStaff, asyncHandler(controllerBook.updateBookCopy));
+router.delete('/book-copy', authUser, libraryStaff, asyncHandler(controllerBook.deleteBookCopy));
+
 router.post('/update', authUser, libraryStaff, asyncHandler(controllerBook.updateProduct));
 router.post('/delete', authUser, libraryStaff, asyncHandler(controllerBook.deleteProduct));
 

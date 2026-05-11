@@ -2,25 +2,16 @@
  * Chạy: node src/scripts/seedPolicies.js (từ thư mục server, đã có MONGODB_URI trong .env)
  * Hoặc: cd server && node src/scripts/seedPolicies.js
  */
-const path = require('path');
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
+const { connectSeedMongo, disconnectSeedMongo } = require('./mongoSeedConnect');
 
 const PolicyMongo = require('../models/policy.mongo.model');
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
-
 const SEED = [
-    { readerType: 'SinhVien_ChinhQuy', maxBooks: 8, loanDays: 150, overdueFinePerDay: 1000 },
+    { readerType: 'SinhVien_ChinhQuy', maxBooks: 8, loanDays: 14, renewExtensionDays: 14, overdueFinePerDay: 1000 },
 ];
 
 async function run() {
-    const uri = process.env.MONGODB_URI;
-    if (!uri) {
-        throw new Error('Thiếu MONGODB_URI trong .env');
-    }
-
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 20000 });
+    await connectSeedMongo();
     console.log('[seedPolicies] Đã kết nối MongoDB');
 
     try {
@@ -31,6 +22,7 @@ async function run() {
                     $set: {
                         maxBooks: row.maxBooks,
                         loanDays: row.loanDays,
+                        renewExtensionDays: row.renewExtensionDays ?? 14,
                         overdueFinePerDay: row.overdueFinePerDay,
                     },
                 },
@@ -39,12 +31,13 @@ async function run() {
             console.log(`[seedPolicies] OK ${row.readerType}:`, {
                 maxBooks: doc.maxBooks,
                 loanDays: doc.loanDays,
+                renewExtensionDays: doc.renewExtensionDays,
                 overdueFinePerDay: doc.overdueFinePerDay,
             });
         }
         console.log('[seedPolicies] Hoàn tất.');
     } finally {
-        await mongoose.disconnect();
+        await disconnectSeedMongo();
     }
 }
 

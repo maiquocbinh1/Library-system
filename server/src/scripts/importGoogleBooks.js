@@ -2,14 +2,11 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const axios = require('axios');
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
+const { connectSeedMongo, disconnectSeedMongo } = require('./mongoSeedConnect');
 
 const BookMongo = require('../models/book.mongo.model');
 const { createBookCopiesForBook } = require('../services/bookCopy.service');
 const { syncBookInventoryFields } = require('../utils/bookInventory');
-
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const GOOGLE_BOOKS_API = 'https://www.googleapis.com/books/v1/volumes';
 const KEYWORDS = ['lập trình', 'tiểu thuyết', 'kinh tế', 'khoa học'];
@@ -116,12 +113,7 @@ async function fetchBooksByKeyword(keyword) {
 }
 
 async function runImport() {
-    const uri = process.env.MONGODB_URI;
-    if (!uri) {
-        throw new Error('MONGODB_URI chưa được cấu hình trong file .env');
-    }
-
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 20000 });
+    await connectSeedMongo();
     console.log('[Seed] Kết nối MongoDB thành công');
 
     try {
@@ -170,7 +162,7 @@ async function runImport() {
 
         console.log(`[Seed] Import thành công ${count}/${books.length} đầu sách vào library_books (+ bản sao vật lý)`);
     } finally {
-        await mongoose.connection.close();
+        await disconnectSeedMongo();
         console.log('[Seed] Đã đóng kết nối MongoDB');
     }
 }
