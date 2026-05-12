@@ -66,17 +66,78 @@ async function findFineByParamId(id) {
     return FineTicketMongo.findOne({ mysqlId: String(id) });
 }
 
+/** Nạp user theo lô — tránh N×2 query song song (timeout client / quá tải pool). */
+async function loadUsersForFineList(userIdSet) {
+    const patronByKey = new Map();
+    const uids = [...userIdSet];
+    const CHUNK = 60;
+    for (let i = 0; i < uids.length; i += CHUNK) {
+        const slice = uids.slice(i, i + CHUNK);
+        const orConds = [];
+        for (const uid of slice) {
+            if (mongoose.isValidObjectId(uid)) {
+                orConds.push({ _id: new mongoose.Types.ObjectId(uid) });
+            }
+            orConds.push({ mysqlId: uid });
+        }
+        if (!orConds.length) continue;
+        const users = await UserMongo.find({ $or: orConds }).lean();
+        for (const u of users) {
+            patronByKey.set(String(u._id), u);
+            if (u.mysqlId) patronByKey.set(String(u.mysqlId), u);
+        }
+    }
+    return patronByKey;
+}
+
 class fineTicketController {
     /** Admin: danh sách phiếu phạt + user + phiếu mượn */
     async getAllFines(req, res) {
-        const list = await FineTicketMongo.find({}).sort({ createdAt: -1 });
-        const data = await Promise.all(
-            list.map(async (doc) => {
-                const userDoc = await findUserByAnyId(doc.userId);
-                const loanDoc = await LoanTicketMongo.findById(doc.loanTicketId).lean();
-                return toClientFineRow(doc, userDoc, loanDoc);
-            }),
-        );
+        const userIdFilter = String(req.query.userId ?? '').trim();
+        let query = {};
+        if (userIdFilter) {
+            const cand = new Set([userIdFilter]);
+            if (mongoose.isValidObjectId(userIdFilter)) {
+                const u = await UserMongo.findById(userIdFilter).select('_id mysqlId').lean();
+                if (u) {
+                    cand.add(String(u._id));
+                    if (u.mysqlId) cand.add(String(u.mysqlId));
+                }
+            } else {
+                const u = await UserMongo.findOne({ mysqlId: userIdFilter }).select('_id mysqlId').lean();
+                if (u) {
+                    cand.add(String(u._id));
+                    if (u.mysqlId) cand.add(String(u.mysqlId));
+                }
+            }
+            query = { userId: { $in: [...cand] } };
+        }
+
+        const MAX_LIST = 8000;
+        const list = await FineTicketMongo.find(query).sort({ createdAt: -1 }).limit(MAX_LIST).lean();
+
+        const userIdSet = new Set();
+        const loanOidStrings = new Set();
+        for (const doc of list) {
+            if (doc.userId != null) userIdSet.add(String(doc.userId));
+            if (doc.loanTicketId && mongoose.isValidObjectId(doc.loanTicketId)) {
+                loanOidStrings.add(String(doc.loanTicketId));
+            }
+        }
+
+        const patronByKey = await loadUsersForFineList(userIdSet);
+
+        const loanOids = [...loanOidStrings].map((id) => new mongoose.Types.ObjectId(id));
+        const loans = loanOids.length
+            ? await LoanTicketMongo.find({ _id: { $in: loanOids } }).lean()
+            : [];
+        const loanById = new Map(loans.map((l) => [String(l._id), l]));
+
+        const data = list.map((doc) => {
+            const userDoc = patronByKey.get(String(doc.userId)) || null;
+            const loanDoc = doc.loanTicketId ? loanById.get(String(doc.loanTicketId)) || null : null;
+            return toClientFineRow(doc, userDoc, loanDoc);
+        });
         new OK({
             message: 'Lấy danh sách phiếu phạt thành công',
             metadata: data,

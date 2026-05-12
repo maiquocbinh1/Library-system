@@ -7,7 +7,7 @@ const { connectSeedMongo, disconnectSeedMongo } = require('./mongoSeedConnect');
 const PolicyMongo = require('../models/policy.mongo.model');
 
 const SEED = [
-    { readerType: 'SinhVien_ChinhQuy', maxBooks: 8, loanDays: 14, renewExtensionDays: 14, overdueFinePerDay: 1000 },
+    { readerType: 'SinhVien_ChinhQuy', maxBooks: 8, loanDays: 14, renewExtensionDays: 7, overdueFinePerDay: 1000 },
 ];
 
 async function run() {
@@ -22,7 +22,7 @@ async function run() {
                     $set: {
                         maxBooks: row.maxBooks,
                         loanDays: row.loanDays,
-                        renewExtensionDays: row.renewExtensionDays ?? 14,
+                        renewExtensionDays: row.renewExtensionDays ?? 7,
                         overdueFinePerDay: row.overdueFinePerDay,
                     },
                 },

@@ -15,11 +15,8 @@ const policyMongoSchema = new mongoose.Schema(
         maxBooks: { type: Number, required: true, min: 1 },
         /** Thời gian mượn tối đa (ngày) */
         loanDays: { type: Number, required: true, min: 1 },
-        /**
-         * Số ngày cộng thêm mỗi lần gia hạn (kể từ hạn trả cũ).
-         * Chỉ dùng giá trị 7 hoặc 14 (1 tuần / 2 tuần).
-         */
-        renewExtensionDays: { type: Number, default: 14, min: 7, max: 14 },
+        /** Số ngày cộng thêm mỗi lần gia hạn (kể từ hạn trả cũ). Quy định: 7 ngày, tối đa 1 lần/phiếu. */
+        renewExtensionDays: { type: Number, default: 7, min: 7, max: 7 },
         /** Phạt quá hạn: VNĐ / cuốn / ngày */
         overdueFinePerDay: { type: Number, default: 1000, min: 0 },
     },

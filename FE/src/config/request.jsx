@@ -104,6 +104,11 @@ export const requestIssueReaderCard = async (data) => {
     return res.data;
 };
 
+export const requestSetPatronLock = async (data) => {
+    const res = await apiClient.post(`${apiUser}/set-patron-lock`, data);
+    return res.data;
+};
+
 export const requestAdminCreateReader = async (data) => {
     const res = await apiClient.post(`${apiUser}/admin-create-reader`, data);
     return res.data;
@@ -115,8 +120,15 @@ export const requestStatistics = async () => {
 };
 
 const apiFines = '/api/fines';
-export const requestGetAllFines = async () => {
-    const res = await apiClient.get(apiFines);
+/** Danh sách lớn + join user/loan — backend đã batch nhưng vẫn cần timeout dài hơn mặc định 10s. */
+const HEAVY_LIST_TIMEOUT_MS = 90000;
+
+export const requestGetAllFines = async (params = {}) => {
+    const { userId } = params || {};
+    const sp = new URLSearchParams();
+    if (userId) sp.set('userId', String(userId));
+    const q = sp.toString();
+    const res = await apiClient.get(`${apiFines}${q ? `?${q}` : ''}`, { timeout: HEAVY_LIST_TIMEOUT_MS });
     return res.data;
 };
 
@@ -148,6 +160,12 @@ export const requestUpdatePolicy = async (id, data) => {
 
 export const requestDeletePolicy = async (id) => {
     const res = await apiClient.delete(`${apiPolicy}/${encodeURIComponent(id)}`);
+    return res.data;
+};
+
+/** Admin: xóa phiếu/phạt độc giả mẫu quầy, trả bản sao về kho (MSV seed circulation). */
+export const requestRefreshCirculationSample = async () => {
+    const res = await apiClient.post(`${apiPolicy}/refresh-circulation-sample`);
     return res.data;
 };
 
@@ -192,8 +210,35 @@ export const requestSyncBookCodes = async () => {
     return res.data;
 };
 
-export const requestGetBookCopies = async () => {
-    const res = await apiClient.get(`${apiProduct}/book-copies`);
+export const requestGetBookCopies = async (params = {}) => {
+    const qs = new URLSearchParams();
+    if (params.bookId) qs.set('bookId', String(params.bookId));
+    if (params.status) qs.set('status', String(params.status));
+    if (params.keyword) qs.set('keyword', String(params.keyword));
+    if (params.limit) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    const url = q ? `${apiProduct}/book-copies?${q}` : `${apiProduct}/book-copies`;
+    const res = await apiClient.get(url);
+    return res.data;
+};
+
+export const requestGetBookCopy = async (id) => {
+    const res = await apiClient.get(`${apiProduct}/book-copy?id=${encodeURIComponent(id)}`);
+    return res.data;
+};
+
+export const requestCreateBookCopy = async (data) => {
+    const res = await apiClient.post(`${apiProduct}/book-copy`, data);
+    return res.data;
+};
+
+export const requestUpdateBookCopy = async (data) => {
+    const res = await apiClient.put(`${apiProduct}/book-copy`, data);
+    return res.data;
+};
+
+export const requestDeleteBookCopy = async (id) => {
+    const res = await apiClient.delete(`${apiProduct}/book-copy?id=${encodeURIComponent(id)}`);
     return res.data;
 };
 
@@ -213,8 +258,15 @@ export const requestCancelBook = async (data) => {
     return res.data;
 };
 
-export const requestGetAllHistoryBook = async () => {
-    const res = await apiClient.get(`${apiHistoryBook}/get-all-history-book`);
+export const requestGetAllHistoryBook = async (params = {}) => {
+    const { userId, limit } = params || {};
+    const sp = new URLSearchParams();
+    if (userId) sp.set('userId', String(userId));
+    if (limit != null && String(limit).trim() !== '') sp.set('limit', String(limit));
+    const q = sp.toString();
+    const res = await apiClient.get(`${apiHistoryBook}/get-all-history-book${q ? `?${q}` : ''}`, {
+        timeout: HEAVY_LIST_TIMEOUT_MS,
+    });
     return res.data;
 };
 
@@ -228,15 +280,45 @@ export const requestReturnBooks = async (data) => {
     return res.data;
 };
 
+/** Thủ thư lập phiếu tại quầy (độc giả + barcode) */
+export const requestStaffDeskIssue = async (data) => {
+    const res = await apiClient.post(`${apiHistoryBook}/staff-desk-issue`, data);
+    return res.data;
+};
+
 /** Thủ thư xác nhận xuất kho bằng barcode (PENDING → BORROWING) */
 export const requestConfirmBorrow = async (data) => {
     const res = await apiClient.put(`${apiHistoryBook}/confirm-borrow`, data);
     return res.data;
 };
 
-/** Thủ thư trả sách bằng barcode */
+/** Thủ thư trả sách bằng barcode (danh sách hoặc một mã) */
 export const requestReturnByBarcode = async (data) => {
     const res = await apiClient.post(`${apiHistoryBook}/return-by-barcode`, data);
+    return res.data;
+};
+
+/** Thủ thư nhận trả đúng một barcode — body { barcode } */
+export const requestReturnBook = async (data) => {
+    const res = await apiClient.post(`${apiHistoryBook}/return-book`, data);
+    return res.data;
+};
+
+/** Nhật ký trả sách trong ngày (theo thủ thư đăng nhập) */
+export const requestGetReturnsToday = async () => {
+    const res = await apiClient.get(`${apiHistoryBook}/returns-today`);
+    return res.data;
+};
+
+/** Gợi ý độc giả tại quầy */
+export const requestFindPatrons = async (q) => {
+    const res = await apiClient.get(`${apiHistoryBook}/find-patrons?q=${encodeURIComponent(q)}`);
+    return res.data;
+};
+
+/** Gia hạn phiếu mượn */
+export const requestRenewLoan = async (data) => {
+    const res = await apiClient.post(`${apiHistoryBook}/renew-loan`, data);
     return res.data;
 };
 

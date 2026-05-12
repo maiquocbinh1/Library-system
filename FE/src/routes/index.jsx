@@ -35,6 +35,14 @@ export const routes = [
         ),
     },
     {
+        path: '/admin/*',
+        component: (
+            <AdminRoute>
+                <Admin />
+            </AdminRoute>
+        ),
+    },
+    {
         path: '/infoUser',
         component: <InfoUser />,
     },

@@ -5,7 +5,7 @@ const { OK, Created } = require('../core/success.response');
 const BookMongo = require('../models/book.mongo.model');
 const BookCopyMongo = require('../models/bookCopy.mongo.model');
 const LoanTicketMongo = require('../models/loanTicket.mongo.model');
-const { countAvailableForBook, syncBookInventoryFields } = require('../utils/bookInventory');
+const { countAvailableForBook, countTotalCopiesForBook, syncBookInventoryFields } = require('../utils/bookInventory');
 const { createBookCopiesForBook, deleteAvailableCopies, createBookCopiesFromBarcodes } = require('../services/bookCopy.service');
 
 function random36() {
@@ -228,7 +228,6 @@ class controllerBook {
             !title ||
             !image ||
             description === undefined ||
-            !stock ||
             !covertType ||
             !publishYear ||
             !pages ||
@@ -240,12 +239,12 @@ class controllerBook {
             throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
         }
 
-        // Chấp nhận barcodes (mảng) hoặc stock (số) để tương thích cả cũ lẫn mới
+        // Chấp nhận barcodes (mảng) hoặc stock (số). Stock >= 0 là hợp lệ.
         const barcodesRaw = req.body.barcodes;
         const hasBarcodes = Array.isArray(barcodesRaw) && barcodesRaw.length > 0;
         const stockNum = Number(stock);
-        if (!hasBarcodes && (!Number.isFinite(stockNum) || stockNum < 0)) {
-            throw new BadRequestError('Vui lòng nhập danh sách mã sách (barcodes) hoặc số lượng');
+        if (!hasBarcodes && (stock === undefined || stock === null || !Number.isFinite(stockNum) || stockNum < 0)) {
+            throw new BadRequestError('Vui lòng nhập số lượng bản sao (≥ 0) hoặc danh sách mã sách');
         }
 
         let bookCode = '';
@@ -579,6 +578,7 @@ class controllerBook {
             product.coverPrice = Number.isFinite(n) ? n : null;
         }
 
+        let pendingPrefixRename = null;
         if (req.body.bookCode !== undefined) {
             const trimmed = String(req.body.bookCode || '').trim();
             if (trimmed) {
@@ -587,6 +587,10 @@ class controllerBook {
                 const existed = await BookMongo.findOne({ bookCode: normalized }).select('_id').lean();
                 if (existed && String(existed._id) !== String(product._id)) {
                     throw new BadRequestError('Mã sách đã tồn tại');
+                }
+                const oldCode = String(product.bookCode || '').trim();
+                if (oldCode && oldCode !== normalized) {
+                    pendingPrefixRename = { from: oldCode, to: normalized };
                 }
                 product.bookCode = normalized;
             } else {
@@ -606,12 +610,15 @@ class controllerBook {
         if (req.body.pages !== undefined) product.pages = Number(req.body.pages);
 
         if (req.body.stock !== undefined) {
+            // Payload `stock` từ FE hiện tại được hiểu là TỔNG SỐ BẢN SAO (totalCopies).
+            // Hệ thống sẽ tạo thêm / xóa bản AVAILABLE để khớp tổng đó.
+            // Không thể giảm xuống dưới số bản sao đang bị "khóa" (BORROWED/RESERVED/MAINTENANCE/LOST).
             const target = Number(req.body.stock);
             if (!Number.isFinite(target) || target < 0) {
                 throw new BadRequestError('Số lượng không hợp lệ');
             }
-            const currentAvail = await countAvailableForBook(product._id);
-            const delta = target - currentAvail;
+            const currentTotal = await countTotalCopiesForBook(product._id);
+            const delta = target - currentTotal;
             if (delta > 0) {
                 await createBookCopiesForBook(
                     product._id,
@@ -624,6 +631,21 @@ class controllerBook {
         }
 
         await product.save();
+
+        if (pendingPrefixRename) {
+            const { from, to } = pendingPrefixRename;
+            const rx = new RegExp(`^${from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-(\\d+)$`, 'i');
+            const copies = await BookCopyMongo.find({ bookId: product._id, barcode: rx }).lean();
+            for (const c of copies) {
+                const m = rx.exec(String(c.barcode || ''));
+                if (!m) continue;
+                const newBarcode = `${to}-${m[1]}`;
+                const clash = await BookCopyMongo.findOne({ barcode: newBarcode, _id: { $ne: c._id } }).select('_id').lean();
+                if (clash) continue;
+                await BookCopyMongo.updateOne({ _id: c._id }, { $set: { barcode: newBarcode } });
+            }
+        }
+
         await syncBookInventoryFields(product._id);
 
         new OK({

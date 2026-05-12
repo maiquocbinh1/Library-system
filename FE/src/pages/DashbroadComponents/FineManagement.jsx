@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Card, Table, Tag, Button, message, Input, Space, Row, Col, Statistic } from 'antd';
-import { ExportOutlined, DollarCircleOutlined, WarningOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { Card, Table, Tag, Button, message, Input, Space, Row, Col, Statistic, Modal } from 'antd';
+import { ExportOutlined, DollarCircleOutlined, WarningOutlined, CheckCircleOutlined, PrinterOutlined } from '@ant-design/icons';
 import { requestGetAllFines, requestPayFine } from '../../config/request';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
@@ -19,6 +19,47 @@ function exportToExcel(data) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Phiếu phạt');
     XLSX.writeFile(wb, 'danh_sach_phat.xlsx');
+}
+
+function openFineReceiptWindow(row, title) {
+    const w = window.open('', '_blank', 'width=420,height=640');
+    if (!w) {
+        message.error('Trình duyệt đã chặn cửa sổ mới — cho phép popup để in biên lai');
+        return;
+    }
+    const msv = row?.user?.studentId || row?.studentId || '—';
+    const name = row?.user?.fullName || '—';
+    const amt = Number(row?.fineAmount || 0).toLocaleString('vi-VN');
+    const status = row?.status === 'PAID' ? 'Đã nộp' : 'Chưa nộp';
+    const reason = String(row?.reason || '');
+    const pid = row?.id || row?._id || '';
+    const when = dayjs(row?.updatedAt || row?.createdAt).isValid()
+        ? dayjs(row.updatedAt || row.createdAt).format('DD/MM/YYYY HH:mm')
+        : dayjs().format('DD/MM/YYYY HH:mm');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+<style>body{font-family:Segoe UI,system-ui,sans-serif;padding:28px;max-width:360px;margin:0 auto;}
+h1{font-size:17px;margin:0 0 8px;} .muted{color:#64748b;font-size:12px;} table{width:100%;margin-top:14px;font-size:14px;}
+td{padding:8px 0;vertical-align:top;border-bottom:1px solid #e2e8f0;} td:first-child{width:38%;color:#64748b;}
+.sign{margin-top:36px;font-size:12px;color:#64748b;}</style></head><body>
+<h1>${title}</h1>
+<p class="muted">Thư viện PTIT · ${when}</p>
+<table>
+<tr><td>MSV / MSG</td><td><strong>${msv}</strong></td></tr>
+<tr><td>Họ tên</td><td>${name}</td></tr>
+<tr><td>Số tiền</td><td><strong>${amt} đ</strong></td></tr>
+<tr><td>Trạng thái</td><td>${status}</td></tr>
+<tr><td>Lý do</td><td>${reason || '—'}</td></tr>
+<tr><td>Mã phiếu</td><td style="font-family:monospace;font-size:12px;">${pid}</td></tr>
+</table>
+<p class="sign">Chữ ký thủ thư: _______________</p>
+</body></html>`;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => {
+        w.print();
+        w.close();
+    }, 200);
 }
 
 const FineManagement = () => {
@@ -120,15 +161,22 @@ const FineManagement = () => {
         {
             title: 'Thao tác',
             key: 'action',
-            width: 120,
+            width: 220,
             fixed: 'right',
             render: (_, record) =>
                 record.status === 'UNPAID' ? (
-                    <Button type="primary" size="small" loading={payingId === (record.id || record._id)} onClick={() => handlePay(record)}>
-                        Thu tiền
-                    </Button>
+                    <Space size="small" wrap>
+                        <Button type="primary" size="small" loading={payingId === (record.id || record._id)} onClick={() => handlePay(record)}>
+                            Thu tiền
+                        </Button>
+                        <Button size="small" icon={<PrinterOutlined />} onClick={() => openFineReceiptWindow(record, 'Thông báo nợ phạt')}>
+                            In phiếu
+                        </Button>
+                    </Space>
                 ) : (
-                    '—'
+                    <Button size="small" icon={<PrinterOutlined />} onClick={() => openFineReceiptWindow(record, 'Biên lai thu phạt')}>
+                        In biên lai
+                    </Button>
                 ),
         },
     ];

@@ -279,6 +279,15 @@ async function run() {
     const copies = await BookCopyMongo.find({}).lean();
     const bookById = new Map(allBooks.map((b) => [String(b._id), b]));
 
+    const activeSlotsByUser = new Map();
+    function activeSlots(uid) {
+        return activeSlotsByUser.get(String(uid)) || 0;
+    }
+    function addActiveSlots(uid, n) {
+        const k = String(uid);
+        activeSlotsByUser.set(k, activeSlots(k) + n);
+    }
+
     console.log('Đang tạo ~2000 phiếu mượn / trả (13 tháng)...');
     let ticketCount = 0;
     const TARGET = 2000;
@@ -293,17 +302,19 @@ async function run() {
 
         if (['Chính trị', 'Thể dục'].includes(book.category) && Math.random() > 0.05) continue;
 
-        const userId = randomPick(userIds);
-        const patron = userById.get(userId);
-        if (!patron) continue;
-
         const borrowDate = randomDateBetween(thirteenMonthsAgo, now);
         const dueDate = new Date(borrowDate);
         dueDate.setDate(dueDate.getDate() + 14);
         dueDate.setHours(0, 0, 0, 0);
+        const renewalOnce = randInt(0, 1);
+        if (renewalOnce) dueDate.setDate(dueDate.getDate() + 7);
 
         const statusRoll = Math.random();
         if (statusRoll < 0.85) {
+            const userId = randomPick(userIds);
+            const patron = userById.get(userId);
+            if (!patron) continue;
+
             let returnDate;
             let overdueDays = 0;
             let fineAmount = 0;
@@ -333,7 +344,7 @@ async function run() {
                 bookCopyIds: [],
                 bookId: book._id,
                 requestedQuantity: 1,
-                renewalCount: randInt(0, 1),
+                renewalCount: renewalOnce,
             });
 
             if (fineAmount > 0) {
@@ -351,6 +362,17 @@ async function run() {
             ticketCount += 1;
         } else {
             if (copy.status !== 'AVAILABLE') continue;
+
+            let pickUserId = randomPick(userIds);
+            let pickPatron = userById.get(pickUserId);
+            for (let tryi = 0; tryi < 80 && activeSlots(pickUserId) >= 8; tryi += 1) {
+                pickUserId = randomPick(userIds);
+                pickPatron = userById.get(pickUserId);
+            }
+            if (!pickPatron || activeSlots(pickUserId) >= 8) continue;
+
+            const userId = pickUserId;
+            const patron = pickPatron;
 
             const isOverdue = dueDate.getTime() < now.getTime();
             let fineAmount = 0;
@@ -375,7 +397,7 @@ async function run() {
                 bookCopyIds: [copy._id],
                 bookId: book._id,
                 requestedQuantity: 1,
-                renewalCount: 0,
+                renewalCount: renewalOnce,
             });
 
             if (isOverdue && fineAmount > 0) {
@@ -392,6 +414,7 @@ async function run() {
             }
 
             ticketCount += 1;
+            addActiveSlots(userId, 1);
         }
     }
 

@@ -128,6 +128,7 @@ async function insertLoanRaw(doc) {
         bookCopyIds: doc.bookCopyIds || [],
         bookId: doc.bookId,
         requestedQuantity: doc.requestedQuantity ?? 1,
+        renewalCount: doc.renewalCount ?? 0,
         createdAt,
         updatedAt,
     });
@@ -231,6 +232,7 @@ async function addPastScenarioTickets(userDoc, scenarios) {
         }
 
         const loanDays = sc.loanDays ?? 14;
+        const renewalCount = loanDays > 14 ? 1 : 0;
         const dueDate = new Date(borrowDate);
         dueDate.setDate(dueDate.getDate() + loanDays);
         dueDate.setHours(0, 0, 0, 0);
@@ -264,6 +266,7 @@ async function addPastScenarioTickets(userDoc, scenarios) {
             bookCopyIds: [],
             bookId,
             requestedQuantity: qty,
+            renewalCount,
             createdAt: borrowDate,
             updatedAt: returnedAt,
         });
@@ -316,7 +319,7 @@ async function addFinalTicketTranThanhB(userDoc) {
     const bookId = copies[0].bookId;
     const due = new Date();
     due.setHours(0, 0, 0, 0);
-    due.setDate(due.getDate() + 12);
+    due.setDate(due.getDate() + 14);
     for (const c of copies) {
         await BookCopyMongo.updateOne({ _id: c._id }, { $set: { status: 'BORROWED' } });
     }

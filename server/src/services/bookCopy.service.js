@@ -6,30 +6,55 @@ function random36() {
     return crypto.randomUUID();
 }
 
+function escapeRegex(s) {
+    return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
- * Sinh barcode mặc định: BC-{mã đầu sách hoặc id ngắn}-{số thứ tự 4 chữ số}
+ * Lấy số thứ tự tiếp theo cho barcode dạng `{prefix}-{n}`.
+ * Quét toàn bộ bản sao của đầu sách, tách phần số ở cuối, lấy max + 1.
+ * An toàn ngay cả khi đã xóa bản sao ở giữa (không tái sử dụng STT cũ).
+ */
+async function getNextCopySequence(bookId, prefix) {
+    const safePrefix = escapeRegex(prefix);
+    const rx = new RegExp(`^${safePrefix}-(\\d+)$`, 'i');
+    const rows = await BookCopyMongo.find({ bookId, barcode: rx }).select('barcode').lean();
+    let maxSeq = 0;
+    for (const r of rows) {
+        const m = rx.exec(String(r.barcode || ''));
+        if (!m) continue;
+        const n = Number.parseInt(m[1], 10);
+        if (Number.isFinite(n) && n > maxSeq) maxSeq = n;
+    }
+    return maxSeq + 1;
+}
+
+/**
+ * Sinh barcode tự động theo định dạng `{bookCode}-{STT}` (STT tăng dần từ 1).
+ * Ví dụ: B001-1, B001-2, B001-3...
  */
 async function createBookCopiesForBook(bookId, bookCodeLabel, quantity) {
-    if (!quantity || quantity <= 0) return;
+    if (!quantity || quantity <= 0) return [];
 
-    const label = String(bookCodeLabel || '')
-        .replace(/\s/g, '')
-        .slice(0, 12);
-    const fallback = String(bookId).replace(/[^a-f0-9]/gi, '').slice(-8);
-    const prefix = label || fallback || 'BOOK';
+    const cleaned = String(bookCodeLabel || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '');
+    const fallback = String(bookId).replace(/[^a-f0-9]/gi, '').slice(-8).toUpperCase();
+    const prefix = cleaned || fallback || 'BOOK';
 
-    const existingCount = await BookCopyMongo.countDocuments({ bookId });
+    let seq = await getNextCopySequence(bookId, prefix);
     const copies = [];
 
     for (let i = 0; i < quantity; i += 1) {
-        const seq = existingCount + i + 1;
-        let barcode = `BC-${prefix}-${String(seq).padStart(4, '0')}`;
+        let barcode = `${prefix}-${seq}`;
         let attempts = 0;
         while (attempts < 8) {
             // eslint-disable-next-line no-await-in-loop
             const clash = await BookCopyMongo.findOne({ barcode }).select('_id').lean();
             if (!clash) break;
-            barcode = `BC-${prefix}-${String(seq).padStart(4, '0')}-${random36().slice(0, 4)}`;
+            seq += 1;
+            barcode = `${prefix}-${seq}`;
             attempts += 1;
         }
         copies.push({
@@ -39,9 +64,13 @@ async function createBookCopiesForBook(bookId, bookCodeLabel, quantity) {
             status: 'AVAILABLE',
             condition: 'NEW',
         });
+        seq += 1;
     }
 
-    await BookCopyMongo.insertMany(copies);
+    if (copies.length) {
+        await BookCopyMongo.insertMany(copies);
+    }
+    return copies;
 }
 
 async function deleteAvailableCopies(bookId, removeCount) {

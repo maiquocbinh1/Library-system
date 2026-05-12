@@ -10,7 +10,7 @@ router.get('/dss/drilldown', authUser, libraryStaff, asyncHandler(analyticsContr
 router.post('/dss/what-if', authUser, libraryStaff, asyncHandler(analyticsController.postWhatIf));
 router.get('/dss/high-risk-users', authUser, libraryStaff, asyncHandler(analyticsController.getHighRiskUsers));
 router.get('/dss/unused-books', authUser, libraryStaff, asyncHandler(analyticsController.getUnusedBooks));
-router.get('/dss/export/high-risk', authUser, libraryStaff, analyticsController.exportHighRisk);
-router.get('/dss/export/unused-books', authUser, libraryStaff, analyticsController.exportUnusedBooks);
+router.get('/dss/export/high-risk', authUser, libraryStaff, asyncHandler(analyticsController.exportHighRisk));
+router.get('/dss/export/unused-books', authUser, libraryStaff, asyncHandler(analyticsController.exportUnusedBooks));
 
 module.exports = router;

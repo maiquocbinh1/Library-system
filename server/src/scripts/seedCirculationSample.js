@@ -160,7 +160,7 @@ async function upsertPolicy() {
             $set: {
                 maxBooks: 8,
                 loanDays: 14,
-                renewExtensionDays: 14,
+                renewExtensionDays: 7,
                 overdueFinePerDay: 1000,
             },
         },

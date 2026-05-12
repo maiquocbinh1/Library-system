@@ -11,8 +11,8 @@ router.get('/get-history-user', authUser, asyncHandler(controllerLoanTicket.getH
 router.post('/cancel-book', authUser, asyncHandler(controllerLoanTicket.cancelBook));
 
 // Admin / Thủ thư
-router.get('/get-all-history-book', asyncHandler(controllerLoanTicket.getAllHistoryBook));
-router.post('/update-status-book', asyncHandler(controllerLoanTicket.updateStatusBook));
+router.get('/get-all-history-book', authUser, libraryStaff, asyncHandler(controllerLoanTicket.getAllHistoryBook));
+router.post('/update-status-book', authUser, libraryStaff, asyncHandler(controllerLoanTicket.updateStatusBook));
 router.post('/return-books', authUser, libraryStaff, asyncHandler(controllerLoanTicket.returnBooks));
 
 // ─── API mới — luồng barcode qltv_ptit ───────────────────────────────────────

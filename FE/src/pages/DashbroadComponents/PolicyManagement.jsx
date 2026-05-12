@@ -1,11 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Table, Button, Modal, Form, InputNumber, Select, message, Popconfirm, Tag } from 'antd';
-import { EditOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-import { requestCreatePolicy, requestDeletePolicy, requestGetPolicies, requestUpdatePolicy } from '../../config/request';
+import { EditOutlined, PlusOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+    requestCreatePolicy,
+    requestDeletePolicy,
+    requestGetPolicies,
+    requestUpdatePolicy,
+    requestRefreshCirculationSample,
+} from '../../config/request';
+
+const RENEW_EXT_OPTIONS = [{ value: 7, label: '7 ngày (1 tuần) — theo quy định' }];
 
 const PolicyManagement = () => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [refreshSampleBusy, setRefreshSampleBusy] = useState(false);
     const [modalOpen, setModalOpen] = useState(false);
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState(null);
@@ -35,6 +44,7 @@ const PolicyManagement = () => {
             readerType: record.readerType,
             maxBooks: record.maxBooks,
             loanDays: record.loanDays,
+            renewExtensionDays: record.renewExtensionDays ?? 7,
             overdueFinePerDay: record.overdueFinePerDay ?? 1000,
         });
         setModalOpen(true);
@@ -47,7 +57,8 @@ const PolicyManagement = () => {
         form.setFieldsValue({
             readerType: undefined,
             maxBooks: 3,
-            loanDays: 30,
+            loanDays: 14,
+            renewExtensionDays: 7,
             overdueFinePerDay: 1000,
         });
         setModalOpen(true);
@@ -64,6 +75,7 @@ const PolicyManagement = () => {
                 await requestUpdatePolicy(editing.id, {
                     maxBooks: values.maxBooks,
                     loanDays: values.loanDays,
+                    renewExtensionDays: values.renewExtensionDays,
                     overdueFinePerDay: values.overdueFinePerDay,
                     readerType: values.readerType,
                 });
@@ -76,6 +88,18 @@ const PolicyManagement = () => {
             message.error(e?.response?.data?.message || 'Thao tác thất bại');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleRefreshSample = async () => {
+        try {
+            setRefreshSampleBusy(true);
+            const res = await requestRefreshCirculationSample();
+            message.success(res?.message || 'Đã làm mới dữ liệu mẫu');
+        } catch (e) {
+            message.error(e?.response?.data?.message || 'Không thể làm mới dữ liệu mẫu');
+        } finally {
+            setRefreshSampleBusy(false);
         }
     };
 
@@ -101,6 +125,13 @@ const PolicyManagement = () => {
         },
         { title: 'Tối đa mượn', dataIndex: 'maxBooks', key: 'maxBooks', width: 120 },
         { title: 'Số ngày mượn', dataIndex: 'loanDays', key: 'loanDays', width: 130 },
+        {
+            title: 'Gia hạn mỗi lần',
+            dataIndex: 'renewExtensionDays',
+            key: 'renewExtensionDays',
+            width: 150,
+            render: (d) => (d != null && Number.isFinite(Number(d)) ? `${Number(d)} ngày` : '—'),
+        },
         {
             title: 'Phạt (VNĐ/ngày/cuốn)',
             dataIndex: 'overdueFinePerDay',
@@ -133,11 +164,26 @@ const PolicyManagement = () => {
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <h2 className="text-lg font-bold text-slate-900">Cấu hình chính sách mượn</h2>
-                        <p className="text-sm text-slate-500">Theo loại bạn đọc (PTIT): số ngày mượn, giới hạn ấn phẩm, mức phạt quá hạn.</p>
+                        <p className="text-sm text-slate-500">
+                            Số ngày mượn tối đa, gia hạn 7 ngày mỗi lần (tối đa 1 lần/phiếu), giới hạn ấn phẩm, mức phạt quá hạn.
+                        </p>
                     </div>
-                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                        Thêm chính sách
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Popconfirm
+                            title="Làm mới dữ liệu mẫu quầy?"
+                            description="Xóa toàn bộ phiếu mượn và phạt của các MSV seed circulation, trả bản sao về kho. Thao tác không hoàn tác."
+                            okText="Làm mới"
+                            cancelText="Hủy"
+                            onConfirm={handleRefreshSample}
+                        >
+                            <Button icon={<ReloadOutlined />} loading={refreshSampleBusy}>
+                                Làm mới dữ liệu mẫu quầy
+                            </Button>
+                        </Popconfirm>
+                        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                            Thêm chính sách
+                        </Button>
+                    </div>
                 </div>
                 <Table
                     rowKey={(r) => r.id || r._id}
@@ -163,8 +209,15 @@ const PolicyManagement = () => {
                     <Form.Item name="maxBooks" label="Số ấn phẩm tối đa" rules={[{ required: true }]}>
                         <InputNumber min={1} className="w-full" />
                     </Form.Item>
-                    <Form.Item name="loanDays" label="Số ngày mượn" rules={[{ required: true }]}>
-                        <InputNumber min={1} className="w-full" />
+                    <Form.Item name="loanDays" label="Số ngày mượn tối đa" rules={[{ required: true }]}>
+                        <InputNumber min={1} max={14} className="w-full" />
+                    </Form.Item>
+                    <Form.Item
+                        name="renewExtensionDays"
+                        label="Thời gian gia hạn mỗi lần (cộng từ hạn trả cũ)"
+                        rules={[{ required: true }]}
+                    >
+                        <Select options={RENEW_EXT_OPTIONS} className="w-full" />
                     </Form.Item>
                     <Form.Item name="overdueFinePerDay" label="Phạt quá hạn (VNĐ / ngày / cuốn)" rules={[{ required: true }]}>
                         <InputNumber min={0} className="w-full" />

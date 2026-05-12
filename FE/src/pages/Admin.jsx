@@ -4,34 +4,37 @@ import {
     AuditOutlined,
     BarcodeOutlined,
     BookOutlined,
-    CheckCircleOutlined,
     ControlOutlined,
     DashboardOutlined,
     DatabaseOutlined,
     DollarOutlined,
     DownOutlined,
-    ExportOutlined,
+    FileSearchOutlined,
     LogoutOutlined,
     MailOutlined,
     PieChartOutlined,
     SettingOutlined,
+    ShopOutlined,
     SolutionOutlined,
+    TagsOutlined,
     TeamOutlined,
     UserOutlined,
     UserSwitchOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 
 import Statistics from './DashbroadComponents/Statistics';
 import BookManagement from './DashbroadComponents/BookManagement';
 import BookCopyManagement from './DashbroadComponents/BookCopyManagement';
 import UserManagement from './DashbroadComponents/UserManagement';
-import LoanRequestManagement from './DashbroadComponents/LoanRequestManagement';
 import CardIssuanceManagement from './DashbroadComponents/CardIssuanceManagement';
 import FineManagement from './DashbroadComponents/FineManagement';
 import PolicyManagement from './DashbroadComponents/PolicyManagement';
 import EmailLogManagement from './DashbroadComponents/EmailLogManagement';
+import CirculationDesk from './DashbroadComponents/CirculationDesk';
+import CategoryManagement from './DashbroadComponents/CategoryManagement';
+import SystemAuditLog from './DashbroadComponents/SystemAuditLog';
 import { requestLogout } from '../config/request';
 import { useStore } from '../hooks/useStore';
 import './admin-layout.css';
@@ -40,17 +43,35 @@ const { Header, Content, Sider } = Layout;
 
 const VIEW_COMPONENTS = {
     stats: <Statistics />,
-    loan: <LoanRequestManagement presetFilter="approval" pageTitle="Phê duyệt mượn sách" />,
-    returns: <LoanRequestManagement presetFilter="returns" pageTitle="Quản lý trả sách" />,
+    'borrow-return': <CirculationDesk />,
     fines: <FineManagement />,
-    'email-logs': <EmailLogManagement />,
     book: <BookManagement />,
     'book-copies': <BookCopyManagement />,
+    'book-categories': <CategoryManagement />,
     'patron-profiles': <UserManagement />,
     'card-issue': <CardIssuanceManagement />,
     policy: <PolicyManagement />,
     user: <UserManagement />,
+    'audit-log': <SystemAuditLog />,
+    'email-logs': <EmailLogManagement />,
 };
+
+const ADMIN_VIEW_KEYS = new Set(Object.keys(VIEW_COMPONENTS));
+
+function adminPathForKey(key) {
+    if (key === 'stats') return '/admin';
+    return `/admin/${key}`;
+}
+
+function adminKeyFromPathname(pathname) {
+    const p = (pathname || '').replace(/\/+$/, '') || '/';
+    if (p === '/admin') return 'stats';
+    const prefix = '/admin/';
+    if (!p.startsWith(prefix)) return 'stats';
+    const seg = p.slice(prefix.length).split('/').filter(Boolean)[0];
+    if (seg && ADMIN_VIEW_KEYS.has(seg)) return seg;
+    return 'stats';
+}
 
 function findMenuLabel(items, key) {
     for (const item of items || []) {
@@ -72,56 +93,57 @@ const sectionLabel = (text) => ({
 
 function buildMenuItems(isAdmin) {
     const items = [
-        sectionLabel('Hỗ trợ ra quyết định (EIS/DSS)'),
+        sectionLabel('I. Bảng điều khiển trung tâm'),
         {
             key: 'overview',
             icon: <PieChartOutlined />,
-            label: 'Dashboard & Phân tích',
-            children: [{ key: 'stats', icon: <DashboardOutlined />, label: 'Dashboard / Thống kê' }],
+            label: 'Dashboard',
+            children: [{ key: 'stats', icon: <DashboardOutlined />, label: 'Thống kê & phân tích' }],
         },
-        sectionLabel('Nghiệp vụ (TPS)'),
+        sectionLabel('II. Nghiệp vụ lưu thông'),
         {
             key: 'circulation',
             icon: <AuditOutlined />,
-            label: 'Quản lý Lưu thông',
+            label: 'Lưu thông (Circulation)',
             children: [
-                { key: 'loan', icon: <CheckCircleOutlined />, label: 'Phê duyệt mượn' },
-                { key: 'returns', icon: <ExportOutlined />, label: 'Quản lý Trả sách' },
-                { key: 'fines', icon: <DollarOutlined />, label: 'Thu Phạt' },
-                { key: 'email-logs', icon: <MailOutlined />, label: 'Nhật ký gửi thư' },
+                { key: 'borrow-return', icon: <ShopOutlined />, label: 'Mượn trả sách' },
+                { key: 'fines', icon: <DollarOutlined />, label: 'Quản lý phí phạt' },
             ],
         },
-        sectionLabel('Kho & Danh mục'),
+        sectionLabel('III. Kho & tài sản (Inventory)'),
         {
             key: 'inventory',
             icon: <DatabaseOutlined />,
-            label: 'Quản lý Kho',
+            label: 'Kho & danh mục',
             children: [
-                { key: 'book', icon: <BookOutlined />, label: 'Danh mục đầu sách' },
-                { key: 'book-copies', icon: <BarcodeOutlined />, label: 'Bản sao & Barcode' },
+                { key: 'book', icon: <BookOutlined />, label: 'Đầu sách (Book catalog)' },
+                { key: 'book-copies', icon: <BarcodeOutlined />, label: 'Quản lý tồn kho' },
+                { key: 'book-categories', icon: <TagsOutlined />, label: 'Thể loại sách' },
             ],
         },
-        sectionLabel('Quản lý Độc giả'),
+        sectionLabel('IV. Độc giả (Patrons)'),
         {
             key: 'patrons',
             icon: <UserOutlined />,
-            label: 'Quản lý Độc giả',
+            label: 'Độc giả',
             children: [
-                { key: 'patron-profiles', icon: <TeamOutlined />, label: 'Hồ sơ Độc giả' },
-                { key: 'card-issue', icon: <SolutionOutlined />, label: 'Kích hoạt Độc giả' },
+                { key: 'patron-profiles', icon: <TeamOutlined />, label: 'Danh sách & tra cứu' },
+                { key: 'card-issue', icon: <SolutionOutlined />, label: 'Kích hoạt thẻ độc giả' },
             ],
         },
     ];
 
     if (isAdmin) {
-        items.push(sectionLabel('Quản trị Hệ thống'));
+        items.push(sectionLabel('V. Hệ thống & cấu hình'));
         items.push({
             key: 'system',
             icon: <SettingOutlined />,
-            label: 'Quản trị Hệ thống',
+            label: 'Hệ thống',
             children: [
+                { key: 'user', icon: <UserSwitchOutlined />, label: 'Quản lý nhân sự & quyền' },
+                { key: 'audit-log', icon: <FileSearchOutlined />, label: 'Nhật ký hệ thống (Audit)' },
                 { key: 'policy', icon: <ControlOutlined />, label: 'Cấu hình chính sách' },
-                { key: 'user', icon: <UserSwitchOutlined />, label: 'Tài khoản thủ thư & phân quyền' },
+                { key: 'email-logs', icon: <MailOutlined />, label: 'Nhật ký gửi thư' },
             ],
         });
     }
@@ -130,7 +152,8 @@ function buildMenuItems(isAdmin) {
 }
 
 function Admin() {
-    const [selectedKey, setSelectedKey] = useState('stats');
+    const location = useLocation();
+    const [selectedKey, setSelectedKey] = useState(() => adminKeyFromPathname(window.location.pathname));
     const [openKeys, setOpenKeys] = useState([
         'overview',
         'circulation',
@@ -144,6 +167,19 @@ function Admin() {
     const isAdmin = String(dataUser?.role || '').toLowerCase() === 'admin';
 
     const menuItems = useMemo(() => buildMenuItems(isAdmin), [isAdmin]);
+
+    useEffect(() => {
+        const p = (location.pathname || '').replace(/\/+$/, '') || '/';
+        const prefix = '/admin/';
+        if (p.startsWith(prefix)) {
+            const seg = p.slice(prefix.length).split('/').filter(Boolean)[0];
+            if (seg && !ADMIN_VIEW_KEYS.has(seg)) {
+                navigate('/admin', { replace: true });
+                return;
+            }
+        }
+        setSelectedKey(adminKeyFromPathname(location.pathname));
+    }, [location.pathname, navigate]);
 
     useEffect(() => {
         setOpenKeys(
@@ -230,6 +266,7 @@ function Admin() {
                     onClick={({ key }) => {
                         if (Object.prototype.hasOwnProperty.call(VIEW_COMPONENTS, key)) {
                             setSelectedKey(key);
+                            navigate(adminPathForKey(key), { replace: false });
                         }
                     }}
                     className="admin-menu-navy"

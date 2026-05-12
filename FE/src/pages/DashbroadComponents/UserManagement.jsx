@@ -1,8 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Table, Button, Input, Modal, Form, Select, message, Space, Tag, Tabs } from 'antd';
-import { IdcardOutlined } from '@ant-design/icons';
-import { requestDeleteUser, requestGetAllUsers, requestIssueReaderCard, requestUpdatePassword, requestUpdateUserAdmin, requestGetHighRiskUsers } from '../../config/request';
+import { Table, Button, Input, Modal, Form, Select, message, Space, Tag, Tabs, Drawer, Typography, Divider } from 'antd';
+import { IdcardOutlined, EyeOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
+import {
+    requestDeleteUser,
+    requestGetAllUsers,
+    requestIssueReaderCard,
+    requestUpdatePassword,
+    requestUpdateUserAdmin,
+    requestGetHighRiskUsers,
+    requestGetAllHistoryBook,
+    requestGetAllFines,
+    requestSetPatronLock,
+} from '../../config/request';
 import { READER_TYPE_OPTIONS } from '../../constants/readerTypes';
+import dayjs from 'dayjs';
+import { loanStatusMeta } from '../../utils/loanTicketStatus';
 
 const { Search } = Input;
 
@@ -35,6 +47,12 @@ const UserManagement = () => {
     const [loading, setLoading] = useState(false);
     const [form] = Form.useForm();
     const [cardForm] = Form.useForm();
+    const [detailOpen, setDetailOpen] = useState(false);
+    const [detailUser, setDetailUser] = useState(null);
+    const [loanRows, setLoanRows] = useState([]);
+    const [fineRows, setFineRows] = useState([]);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [lockLoading, setLockLoading] = useState(false);
 
     const columns = [
         { title: 'MSV', key: 'studentId', width: 140, render: (_, r) => r.studentId || r.readerCode || '—' },
@@ -68,6 +86,9 @@ const UserManagement = () => {
                             }}
                         >
                             Sửa
+                        </Button>
+                        <Button type="default" size="small" icon={<EyeOutlined />} onClick={() => openPatronDetail(record)} className="rounded-xl">
+                            Chi tiết
                         </Button>
                         <Button
                             icon={<IdcardOutlined />}
@@ -128,6 +149,62 @@ const UserManagement = () => {
         fetchData();
         fetchRiskData();
     }, []);
+
+    const patronIds = (u) => [String(u?.id || ''), String(u?._id || ''), String(u?.mysqlId || '')].filter(Boolean);
+
+    const openPatronDetail = async (record) => {
+        setDetailUser(record);
+        setDetailOpen(true);
+        setDetailLoading(true);
+        try {
+            const primaryId = String(record?.id || record?._id || '').trim();
+            const [hRes, fRes] = await Promise.all([
+                primaryId ? requestGetAllHistoryBook({ userId: primaryId }) : requestGetAllHistoryBook(),
+                primaryId ? requestGetAllFines({ userId: primaryId }) : requestGetAllFines(),
+            ]);
+            const tickets = Array.isArray(hRes?.metadata) ? hRes.metadata : [];
+            const fines = Array.isArray(fRes?.metadata) ? fRes.metadata : [];
+            const ids = patronIds(record);
+            setLoanRows(
+                tickets
+                    .filter((t) => ids.includes(String(t.userId)))
+                    .map((t) => ({ ...t, id: t.id || t.mysqlId || t._id })),
+            );
+            setFineRows(
+                fines.filter((f) => {
+                    const uid = String(f?.userId || f?.user?.id || '');
+                    return ids.includes(uid);
+                }),
+            );
+        } catch {
+            message.error('Không tải được lịch sử độc giả');
+            setLoanRows([]);
+            setFineRows([]);
+        } finally {
+            setDetailLoading(false);
+        }
+    };
+
+    const totalDebt = useMemo(() => {
+        if (!detailUser) return 0;
+        return fineRows.filter((f) => f.status === 'UNPAID').reduce((s, f) => s + Number(f.fineAmount || 0), 0);
+    }, [detailUser, fineRows]);
+
+    const togglePatronLock = async () => {
+        if (!detailUser) return;
+        const blocked = !detailUser.libraryCardBlocked;
+        try {
+            setLockLoading(true);
+            await requestSetPatronLock({ userId: detailUser.id, blocked });
+            message.success(blocked ? 'Đã khóa thẻ' : 'Đã mở khóa thẻ');
+            setDetailUser((u) => ({ ...u, libraryCardBlocked: blocked }));
+            await fetchData();
+        } catch (e) {
+            message.error(e?.response?.data?.message || 'Không cập nhật được');
+        } finally {
+            setLockLoading(false);
+        }
+    };
 
     const handleUpdateUser = async () => {
         try {
@@ -209,11 +286,88 @@ const UserManagement = () => {
     return (
         <div>
             <div className="mb-4 flex justify-between">
-                <h2 className="text-2xl font-bold">Quản lý người dùng</h2>
+                <h2 className="text-2xl font-bold">Danh sách & tra cứu độc giả</h2>
             </div>
             <Search placeholder="Tìm kiếm người dùng" onSearch={() => {}} style={{ width: 300, marginBottom: 12 }} />
             <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} className="mb-3" />
-            <Table columns={columns} dataSource={filteredData} rowKey={(record) => record.id || record.email} scroll={{ x: 900 }} />
+            <Table columns={columns} dataSource={filteredData} rowKey={(record) => record.id || record.email} scroll={{ x: 1020 }} />
+
+            <Drawer
+                title={detailUser ? `Chi tiết độc giả — ${detailUser.fullName || ''}` : 'Chi tiết'}
+                width={720}
+                open={detailOpen}
+                onClose={() => { setDetailOpen(false); setDetailUser(null); }}
+                destroyOnClose
+            >
+                {detailUser && (
+                    <div className="flex flex-col gap-4">
+                        <div>
+                            <Typography.Text type="secondary">MSV / Thẻ</Typography.Text>
+                            <div className="font-mono font-semibold">{detailUser.studentId || detailUser.readerCode || '—'}</div>
+                            <Typography.Text type="secondary" className="mt-2 block">Email</Typography.Text>
+                            <div>{detailUser.email || '—'}</div>
+                            {detailUser.libraryCardBlocked ? <Tag color="red" className="mt-2">Thẻ đang khóa</Tag> : <Tag color="green" className="mt-2">Thẻ hoạt động</Tag>}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Typography.Text strong>Tổng nợ phạt chưa thu:</Typography.Text>
+                            <Typography.Text type="danger">{totalDebt.toLocaleString('vi-VN')} đ</Typography.Text>
+                        </div>
+                        {detailUser.role === 'user' && (
+                            <Space>
+                                <Button
+                                    type={detailUser.libraryCardBlocked ? 'default' : 'primary'}
+                                    danger={!detailUser.libraryCardBlocked}
+                                    icon={detailUser.libraryCardBlocked ? <UnlockOutlined /> : <LockOutlined />}
+                                    loading={lockLoading}
+                                    onClick={togglePatronLock}
+                                >
+                                    {detailUser.libraryCardBlocked ? 'Mở khóa thẻ' : 'Khóa thẻ / tài khoản mượn'}
+                                </Button>
+                            </Space>
+                        )}
+                        <Divider className="!my-2" />
+                        <Typography.Title level={5}>Lịch sử mượn</Typography.Title>
+                        <Table
+                            size="small"
+                            loading={detailLoading}
+                            rowKey={(r) => r.id}
+                            dataSource={loanRows}
+                            pagination={{ pageSize: 6 }}
+                            columns={[
+                                {
+                                    title: 'Trạng thái',
+                                    dataIndex: 'status',
+                                    width: 120,
+                                    render: (s) => {
+                                        const m = loanStatusMeta(s);
+                                        return <Tag color={m.color}>{m.text}</Tag>;
+                                    },
+                                },
+                                { title: 'Ngày', dataIndex: 'borrowDate', width: 110, render: (d) => (d && dayjs(d).isValid() ? dayjs(d).format('DD/MM/YYYY') : '—') },
+                                {
+                                    title: 'Đầu sách',
+                                    key: 't',
+                                    ellipsis: true,
+                                    render: (_, r) => r?.product?.title || r?.product?.nameProduct || '—',
+                                },
+                            ]}
+                        />
+                        <Typography.Title level={5}>Phiếu phạt</Typography.Title>
+                        <Table
+                            size="small"
+                            loading={detailLoading}
+                            rowKey={(r) => r.id || r._id}
+                            dataSource={fineRows}
+                            pagination={{ pageSize: 5 }}
+                            columns={[
+                                { title: 'Số tiền', dataIndex: 'fineAmount', width: 120, render: (v) => `${Number(v || 0).toLocaleString('vi-VN')} đ` },
+                                { title: 'Trạng thái', dataIndex: 'status', width: 100, render: (s) => (s === 'PAID' ? <Tag color="success">Đã nộp</Tag> : <Tag color="warning">Chưa nộp</Tag>) },
+                                { title: 'Lý do', dataIndex: 'reason', ellipsis: true },
+                            ]}
+                        />
+                    </div>
+                )}
+            </Drawer>
 
             <Modal
                 title="Sửa thông tin người dùng"

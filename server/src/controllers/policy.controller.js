@@ -5,7 +5,7 @@ const { BadRequestError } = require('../core/error.response');
 const { OK, Created } = require('../core/success.response');
 const { resetCirculationSamplePatronsState } = require('../services/circulationSampleReset.service');
 
-const RENEW_EXT_ALLOWED = new Set([7, 14]);
+const RENEW_EXT_ALLOWED = new Set([7]);
 
 function normalizeRenewExtensionDays(v) {
     const n = Number(v);
@@ -21,10 +21,43 @@ function toClientPolicy(doc) {
     };
 }
 
+const STANDARD_STUDENT_LOAN_DAYS = 14;
+const STANDARD_STUDENT_RENEW_DAYS = 7;
+
+/**
+ * Đồng bộ quy định thư viện (14 ngày mượn, gia hạn 7 ngày) nếu CSDL bị lệch (vd. nhập nhầm 150).
+ */
+async function repairStudentPolicyIfNeeded(lean) {
+    if (!lean || lean.readerType !== 'SinhVien_ChinhQuy') return lean;
+    const ld = Number(lean.loanDays);
+    const re = Number(lean.renewExtensionDays);
+    const badLoan = !Number.isFinite(ld) || ld < 1 || ld > STANDARD_STUDENT_LOAN_DAYS;
+    const badRenew = !Number.isFinite(re) || re !== STANDARD_STUDENT_RENEW_DAYS;
+    if (!badLoan && !badRenew) return lean;
+    await PolicyMongo.updateOne(
+        { _id: lean._id },
+        {
+            $set: {
+                loanDays: STANDARD_STUDENT_LOAN_DAYS,
+                renewExtensionDays: STANDARD_STUDENT_RENEW_DAYS,
+            },
+        },
+    );
+    return {
+        ...lean,
+        loanDays: STANDARD_STUDENT_LOAN_DAYS,
+        renewExtensionDays: STANDARD_STUDENT_RENEW_DAYS,
+    };
+}
+
 class policyController {
     async getPolicies(req, res) {
         const list = await PolicyMongo.find({}).sort({ readerType: 1 }).lean();
-        const metadata = list.map((p) => ({
+        const repaired = [];
+        for (const p of list) {
+            repaired.push(await repairStudentPolicyIfNeeded(p));
+        }
+        const metadata = repaired.map((p) => ({
             ...p,
             id: String(p._id),
         }));
@@ -50,9 +83,10 @@ class policyController {
         if (!policy) {
             throw new BadRequestError('Không có chính sách cho đối tượng này');
         }
+        const fixed = await repairStudentPolicyIfNeeded(policy);
         new OK({
             message: 'Lấy chính sách thành công',
-            metadata: { ...policy, id: String(policy._id) },
+            metadata: { ...fixed, id: String(fixed._id) },
         }).send(res);
     }
 
@@ -69,13 +103,16 @@ class policyController {
         if (!Number.isFinite(loanD) || loanD < 1) {
             throw new BadRequestError('loanDays không hợp lệ');
         }
+        if (readerType === 'SinhVien_ChinhQuy' && loanD > STANDARD_STUDENT_LOAN_DAYS) {
+            throw new BadRequestError(`Sinh viên: số ngày mượn tối đa là ${STANDARD_STUDENT_LOAN_DAYS} ngày`);
+        }
         const fine = overdueFinePerDay !== undefined ? Number(overdueFinePerDay) : 1000;
         if (!Number.isFinite(fine) || fine < 0) {
             throw new BadRequestError('overdueFinePerDay không hợp lệ');
         }
         const renewExt = normalizeRenewExtensionDays(renewExtensionDays);
         if (renewExtensionDays !== undefined && renewExtensionDays !== null && renewExt === null) {
-            throw new BadRequestError('renewExtensionDays chỉ được phép là 7 (1 tuần) hoặc 14 (2 tuần)');
+            throw new BadRequestError('renewExtensionDays chỉ được phép là 7 ngày (1 tuần)');
         }
 
         const existed = await PolicyMongo.findOne({ readerType }).lean();
@@ -87,7 +124,7 @@ class policyController {
             readerType,
             maxBooks: maxB,
             loanDays: loanD,
-            renewExtensionDays: renewExt ?? 14,
+            renewExtensionDays: renewExt ?? 7,
             overdueFinePerDay: fine,
         });
 
@@ -129,11 +166,15 @@ class policyController {
         if (loanDays !== undefined) {
             const n = Number(loanDays);
             if (!Number.isFinite(n) || n < 1) throw new BadRequestError('loanDays không hợp lệ');
+            const rt = policy.readerType;
+            if (rt === 'SinhVien_ChinhQuy' && n > STANDARD_STUDENT_LOAN_DAYS) {
+                throw new BadRequestError(`Sinh viên: số ngày mượn tối đa là ${STANDARD_STUDENT_LOAN_DAYS} ngày`);
+            }
             policy.loanDays = n;
         }
         if (renewExtensionDays !== undefined) {
             const r = normalizeRenewExtensionDays(renewExtensionDays);
-            if (r === null) throw new BadRequestError('renewExtensionDays chỉ được phép là 7 (1 tuần) hoặc 14 (2 tuần)');
+            if (r === null) throw new BadRequestError('renewExtensionDays chỉ được phép là 7 ngày (1 tuần)');
             policy.renewExtensionDays = r;
         }
         if (overdueFinePerDay !== undefined) {

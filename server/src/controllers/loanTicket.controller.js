@@ -278,7 +278,9 @@ async function executeReturnOneBarcode(inputBarcode, req) {
         overdueDays = calendarDaysLate(ticket.dueDate, now);
         if (overdueDays > 0) {
             const borrower = await findUserByAnyId(ticket.userId);
-            fineAmount = overdueDays * 1000;
+            const policy = borrower?.readerType ? await getPolicyByReaderType(borrower.readerType).catch(() => null) : null;
+            const rate = Number(policy?.overdueFinePerDay ?? 1000);
+            fineAmount = Math.round(overdueDays * rate);
             fineDoc = await FineTicketMongo.create({
                 mysqlId: random36(),
                 loanTicketId: ticket._id,
@@ -817,11 +819,34 @@ class loanTicketController {
         const rawLimit = parseInt(String(req.query.limit ?? ''), 10);
         const DEFAULT_LIMIT = 1500;
         const MAX_LIMIT = 4000;
-        const limit = Number.isFinite(rawLimit) && rawLimit > 0
-            ? Math.min(rawLimit, MAX_LIMIT)
-            : DEFAULT_LIMIT;
+        const PATRON_DETAIL_LIMIT = 8000;
 
-        const list = await LoanTicketMongo.find({})
+        const userIdFilter = String(req.query.userId ?? '').trim();
+        let match = {};
+        if (userIdFilter) {
+            const cand = new Set([userIdFilter]);
+            if (mongoose.isValidObjectId(userIdFilter)) {
+                const u = await UserMongo.findById(userIdFilter).select('_id mysqlId').lean();
+                if (u) {
+                    cand.add(String(u._id));
+                    if (u.mysqlId) cand.add(String(u.mysqlId));
+                }
+            } else {
+                const u = await UserMongo.findOne({ mysqlId: userIdFilter }).select('_id mysqlId').lean();
+                if (u) {
+                    cand.add(String(u._id));
+                    if (u.mysqlId) cand.add(String(u.mysqlId));
+                }
+            }
+            match = { userId: { $in: [...cand] } };
+        }
+
+        const defaultCap = userIdFilter ? PATRON_DETAIL_LIMIT : DEFAULT_LIMIT;
+        const limit = Number.isFinite(rawLimit) && rawLimit > 0
+            ? Math.min(rawLimit, userIdFilter ? 10000 : MAX_LIMIT)
+            : defaultCap;
+
+        const list = await LoanTicketMongo.find(match)
             .sort({ createdAt: -1 })
             .limit(limit)
             .lean();
@@ -856,18 +881,24 @@ class loanTicketController {
             : [];
         const bookMap = new Map(books.map((b) => [String(b._id), b]));
 
-        const orConds = [];
-        for (const uid of userIdSet) {
-            if (mongoose.isValidObjectId(uid)) {
-                orConds.push({ _id: new mongoose.Types.ObjectId(uid) });
-            }
-            orConds.push({ mysqlId: uid });
-        }
-        const users = orConds.length ? await UserMongo.find({ $or: orConds }).lean() : [];
         const patronByKey = new Map();
-        for (const u of users) {
-            patronByKey.set(String(u._id), u);
-            if (u.mysqlId) patronByKey.set(String(u.mysqlId), u);
+        const uids = [...userIdSet];
+        const CHUNK = 60;
+        for (let i = 0; i < uids.length; i += CHUNK) {
+            const slice = uids.slice(i, i + CHUNK);
+            const chunkOr = [];
+            for (const uid of slice) {
+                if (mongoose.isValidObjectId(uid)) {
+                    chunkOr.push({ _id: new mongoose.Types.ObjectId(uid) });
+                }
+                chunkOr.push({ mysqlId: uid });
+            }
+            if (!chunkOr.length) continue;
+            const users = await UserMongo.find({ $or: chunkOr }).lean();
+            for (const u of users) {
+                patronByKey.set(String(u._id), u);
+                if (u.mysqlId) patronByKey.set(String(u.mysqlId), u);
+            }
         }
 
         const data = list.map((item) => {
@@ -990,11 +1021,8 @@ class loanTicketController {
         dueNorm.setHours(0, 0, 0, 0);
         if (dueNorm < startOfToday) throw new BadRequestError('Đã quá hạn trả — không thể gia hạn');
 
-        const policy = await getBorrowPolicyForUser(patron);
-        const ext =
-            policy?.renewExtensionDays != null && [7, 14].includes(Number(policy.renewExtensionDays))
-                ? Number(policy.renewExtensionDays)
-                : 14;
+        await getBorrowPolicyForUser(patron);
+        const ext = 7;
         const newDue = new Date(dueNorm);
         newDue.setDate(newDue.getDate() + ext);
 
