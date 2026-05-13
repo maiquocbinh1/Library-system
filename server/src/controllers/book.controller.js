@@ -7,6 +7,7 @@ const BookCopyMongo = require('../models/bookCopy.mongo.model');
 const LoanTicketMongo = require('../models/loanTicket.mongo.model');
 const { countAvailableForBook, countTotalCopiesForBook, syncBookInventoryFields } = require('../utils/bookInventory');
 const { createBookCopiesForBook, deleteAvailableCopies, createBookCopiesFromBarcodes } = require('../services/bookCopy.service');
+const { logAdminAction, AuditActions } = require('../utils/logAdminAction');
 
 function random36() {
     return crypto.randomUUID();
@@ -493,8 +494,24 @@ class controllerBook {
         if (activeLoan) throw new BadRequestError('Bản sao đang trên phiếu mượn — không xóa được');
 
         const bookId = copy.bookId;
+        const copySnap = {
+            id: String(copy._id),
+            barcode: copy.barcode,
+            status: copy.status,
+            bookId: copy.bookId ? String(copy.bookId) : null,
+            condition: copy.condition,
+        };
         await BookCopyMongo.deleteOne({ _id: copy._id });
         await syncBookInventoryFields(bookId);
+
+        await logAdminAction({
+            req,
+            action: AuditActions.BOOK_COPY_DELETED,
+            targetId: String(copy._id),
+            targetType: 'BOOK_COPY',
+            oldValues: copySnap,
+            newValues: null,
+        });
 
         new OK({ message: 'Đã xóa bản sao', metadata: { id: String(copy._id) } }).send(res);
     }

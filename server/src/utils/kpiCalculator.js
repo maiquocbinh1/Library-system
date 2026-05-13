@@ -11,7 +11,7 @@ const BookMongo = require('../models/book.mongo.model');
 async function getUtilizationRate() {
     const total = await BookCopyMongo.countDocuments({});
     if (!total) return 0;
-    const borrowed = await BookCopyMongo.countDocuments({ status: { $in: ['borrowed', 'BORROWED'] } });
+    const borrowed = await BookCopyMongo.countDocuments({ status: 'BORROWED' });
     return Math.round((borrowed / total) * 100 * 10) / 10;
 }
 
@@ -32,9 +32,13 @@ async function getActiveUserRate() {
  * KPI 3: Tỷ lệ quá hạn
  */
 async function getOverdueRate() {
+    const now = new Date();
     const active = await LoanTicketMongo.countDocuments({ status: { $in: ['BORROWING', 'OVERDUE'] } });
     if (!active) return 0;
-    const overdue = await LoanTicketMongo.countDocuments({ status: 'OVERDUE' });
+    const overdue = await LoanTicketMongo.countDocuments({
+        status: { $in: ['BORROWING', 'OVERDUE'] },
+        dueDate: { $ne: null, $lt: now },
+    });
     return Math.round((overdue / active) * 100 * 10) / 10;
 }
 
@@ -103,7 +107,7 @@ async function getCategoryTrends(period = 'all') {
         for (const copyId of ticket.bookCopyIds || []) {
             const copy = copyMap.get(String(copyId));
             if (!copy) continue;
-            const book = bookMap.get(String(copy.bookId || copy.mysqlId));
+            const book = bookMap.get(String(copy.bookId)) || bookMap.get(String(copy.mysqlId || ''));
             const cat = (book?.category_1 || book?.category || 'Khác').trim();
             categoryCount[cat] = (categoryCount[cat] || 0) + 1;
         }
@@ -147,7 +151,7 @@ async function getDrilldown(category, period = 'all') {
         for (const copyId of ticket.bookCopyIds || []) {
             const copy = copyMap.get(String(copyId));
             if (!copy) continue;
-            const book = bookMap.get(String(copy.bookId || copy.mysqlId));
+            const book = bookMap.get(String(copy.bookId)) || bookMap.get(String(copy.mysqlId || ''));
             if (!book) continue;
             const cat = (book?.category_1 || book?.category || 'Khác').trim();
             if (cat !== category) continue;

@@ -68,6 +68,13 @@ async function findLoanByAnyId(id) {
     return LoanTicketMongo.findOne({ mysqlId: String(id) });
 }
 
+/** Bản sao gắn với phiếu để hiển thị lịch sử (ưu tiên snapshot xuất kho, không mất khi đã trả). */
+function copyIdsForTicketHistory(ticketLean) {
+    const issued = ticketLean.issuedBookCopyIds || [];
+    if (issued.length) return issued;
+    return ticketLean.bookCopyIds || [];
+}
+
 /**
  * Resolve đầu sách từ phiếu.
  * Ưu tiên field bookId mới; fallback sang copy đầu tiên (dữ liệu cũ).
@@ -75,7 +82,7 @@ async function findLoanByAnyId(id) {
 async function resolveBookFromTicket(ticket) {
     const raw = ticket.toObject ? ticket.toObject() : ticket;
     if (raw.bookId) return BookMongo.findById(raw.bookId);
-    const ids = raw.bookCopyIds || [];
+    const ids = copyIdsForTicketHistory(raw);
     if (!ids.length) return null;
     const first = await BookCopyMongo.findById(ids[0]).select('bookId').lean();
     if (!first?.bookId) return null;
@@ -94,7 +101,7 @@ function toClientLoan(ticketDoc, extras = {}) {
     // PENDING: dùng requestedQuantity; các trạng thái khác: đếm bản sao thực tế
     const q = raw.status === 'PENDING_APPROVAL'
         ? (raw.requestedQuantity || 0)
-        : (Array.isArray(raw.bookCopyIds) ? raw.bookCopyIds.length : 0);
+        : copyIdsForTicketHistory(raw).length;
     return {
         ...raw,
         id: raw.mysqlId || (raw._id ? String(raw._id) : undefined),
@@ -106,7 +113,7 @@ function toClientLoan(ticketDoc, extras = {}) {
 
 /** Chi tiết bản sao + tên đầu sách cho Admin. */
 async function buildBookCopiesWithTitles(ticketLean) {
-    const copyIds = ticketLean.bookCopyIds || [];
+    const copyIds = copyIdsForTicketHistory(ticketLean);
     if (!copyIds.length) {
         // PENDING ticket — chưa có bản sao, trả info từ bookId
         if (ticketLean.bookId) {
@@ -139,7 +146,7 @@ async function buildBookCopiesWithTitles(ticketLean) {
  * Giống buildBookCopiesWithTitles nhưng dùng map đã nạp (tránh N+1 query khi list lớn).
  */
 function buildBookCopiesWithTitlesFromMaps(ticketLean, copyById, bookMap) {
-    const copyIds = ticketLean.bookCopyIds || [];
+    const copyIds = copyIdsForTicketHistory(ticketLean);
     if (!copyIds.length) {
         if (ticketLean.bookId) {
             const book = bookMap.get(String(ticketLean.bookId));
@@ -269,6 +276,10 @@ async function executeReturnOneBarcode(inputBarcode, req) {
     copy.status = 'AVAILABLE';
     await copy.save();
 
+    if (!(ticket.issuedBookCopyIds && ticket.issuedBookCopyIds.length) && (ticket.bookCopyIds || []).length) {
+        ticket.issuedBookCopyIds = [...ticket.bookCopyIds];
+    }
+
     ticket.bookCopyIds = (ticket.bookCopyIds || []).filter((id) => String(id) !== String(copy._id));
 
     let overdueDays = 0;
@@ -383,6 +394,7 @@ async function applyConfirmBorrowToPendingTicket(ticket, trimmedBarcodes) {
     await BookCopyMongo.updateMany({ _id: { $in: copyIds } }, { $set: { status: 'BORROWED' } });
 
     ticket.bookCopyIds = copyIds;
+    ticket.issuedBookCopyIds = copyIds;
     ticket.status = 'BORROWING';
     ticket.dueDate = due;
     await ticket.save();
@@ -676,9 +688,7 @@ class loanTicketController {
         const end = new Date();
         end.setHours(23, 59, 59, 999);
 
-        const staffId = req.user?.id ? String(req.user.id) : null;
         const filter = { recordedAt: { $gte: start, $lte: end } };
-        if (staffId) filter.staffUserId = staffId;
 
         const list = await CirculationReturnEventMongo.find(filter).sort({ recordedAt: -1 }).limit(500).lean();
         const metadata = list.map((x) => ({
@@ -795,6 +805,10 @@ class loanTicketController {
             await BookCopyMongo.updateMany({ _id: { $in: copyIds } }, { $set: { status: 'AVAILABLE' } });
         }
 
+        if (!(findTicket.issuedBookCopyIds && findTicket.issuedBookCopyIds.length) && copyIds.length) {
+            findTicket.issuedBookCopyIds = [...copyIds];
+        }
+
         findTicket.status = 'RETURNED';
         findTicket.returnedAt = now;
         findTicket.bookCopyIds = [];
@@ -858,6 +872,9 @@ class loanTicketController {
             if (item.userId != null) userIdSet.add(String(item.userId));
             if (item.bookId) bookIdSet.add(String(item.bookId));
             for (const cid of item.bookCopyIds || []) {
+                if (cid) allCopyIdSet.add(String(cid));
+            }
+            for (const cid of item.issuedBookCopyIds || []) {
                 if (cid) allCopyIdSet.add(String(cid));
             }
         }
@@ -1021,8 +1038,8 @@ class loanTicketController {
         dueNorm.setHours(0, 0, 0, 0);
         if (dueNorm < startOfToday) throw new BadRequestError('Đã quá hạn trả — không thể gia hạn');
 
-        await getBorrowPolicyForUser(patron);
-        const ext = 7;
+        const policy = await getBorrowPolicyForUser(patron);
+        const ext = Number(policy?.renewExtensionDays ?? 7);
         const newDue = new Date(dueNorm);
         newDue.setDate(newDue.getDate() + ext);
 

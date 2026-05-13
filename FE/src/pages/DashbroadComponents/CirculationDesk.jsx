@@ -465,11 +465,20 @@ const CirculationDesk = () => {
         }
         setIssueBusy(true);
         try {
-            await requestStaffDeskIssue({
+            const res = await requestStaffDeskIssue({
                 userId: patron.id,
                 barcodes: cart.map((c) => c.barcode),
             });
-            message.success('Đã tạo phiếu, xuất kho và gửi email xác nhận');
+            const tickets = res?.metadata?.tickets || [];
+            const loanDays = res?.metadata?.loanDays ?? 14;
+            if (tickets.length > 1) {
+                message.success(
+                    `Đã tạo ${tickets.length} phiếu mượn (${cart.length} cuốn). Hạn trả: ${loanDays} ngày. Email xác nhận đã gửi.`,
+                    5,
+                );
+            } else {
+                message.success('Đã tạo phiếu mượn, xuất kho và gửi email xác nhận.');
+            }
             setCart([]);
             await loadBase();
         } catch (e) {
@@ -510,6 +519,9 @@ const CirculationDesk = () => {
             await requestRenewLoan({ loanTicketId });
             message.success('Gia hạn thành công');
             await loadBase();
+            if (renewPatron) {
+                setRenewPatron((prev) => ({ ...prev }));
+            }
         } catch (e) {
             message.error(e?.response?.data?.message || 'Không gia hạn được');
         } finally {
@@ -1075,14 +1087,14 @@ const CirculationDesk = () => {
                                                 copies[0]?.author ||
                                                 '—';
                                             const overdue =
-                                                t.status === 'OVERDUE' || isCalendarOverdue(t.returnDate || t.dueDate);
+                                                t.status === 'OVERDUE' || isCalendarOverdue(t.dueDate || t.returnDate);
                                             const blocked =
                                                 renewPatronHasUnpaidFine ||
                                                 overdue ||
                                                 (t.renewalCount || 0) >= 1 ||
                                                 t.status !== 'BORROWING';
-                                            const newDue = t.returnDate || t.dueDate
-                                                ? dayjs(t.returnDate || t.dueDate)
+                                            const newDue = t.dueDate || t.returnDate
+                                                ? dayjs(t.dueDate || t.returnDate)
                                                       .add(policyForRenewPatron.renewExtensionDays, 'day')
                                                       .format('DD/MM/YYYY')
                                                 : '—';
@@ -1091,8 +1103,8 @@ const CirculationDesk = () => {
                                                     ? dayjs(t.borrowDate).format('DD/MM/YYYY')
                                                     : '—';
                                             const dueLabel =
-                                                t.returnDate || t.dueDate
-                                                    ? dayjs(t.returnDate || t.dueDate).format('DD/MM/YYYY')
+                                                t.dueDate || t.returnDate
+                                                    ? dayjs(t.dueDate || t.returnDate).format('DD/MM/YYYY')
                                                     : '—';
                                             return (
                                                 <li

@@ -202,7 +202,7 @@ const PolicyManagement = () => {
                 onOk={handleSubmit}
                 confirmLoading={loading}
                 okText="Lưu"
-                destroyOnClose
+                destroyOnHidden
                 width={520}
             >
                 <Form form={form} layout="vertical">

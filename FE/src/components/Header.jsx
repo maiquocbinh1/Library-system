@@ -1,7 +1,7 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useStore } from '../hooks/useStore';
 import { Dropdown, Avatar, Button, Input } from 'antd';
-import { UserOutlined, LogoutOutlined, HistoryOutlined, SearchOutlined, SafetyOutlined } from '@ant-design/icons';
+import { UserOutlined, LogoutOutlined, SearchOutlined, SafetyOutlined, BookOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { requestLogout } from '../config/request';
 
@@ -22,9 +22,17 @@ function Header() {
         }
     };
 
+    const patronNav =
+        dataUser?.id && !isLibraryStaff
+            ? [
+                  { label: 'Hồ sơ cá nhân', to: '/infoUser?tab=profile' },
+                  { label: 'Lịch sử mượn', to: '/infoUser?tab=history' },
+              ]
+            : [];
+
     const navItems = [
-        { label: 'Trang chủ', to: '/' },
-        { label: 'Danh mục sách', to: '/categories' },
+        { label: 'Danh mục sách', to: '/', end: true },
+        ...patronNav,
         { label: 'Quy định', to: '/rules' },
         { label: 'Liên hệ', to: '/contact' },
     ];
@@ -44,13 +52,14 @@ function Header() {
                     </Link>
                 </div>
 
-                <nav className="hidden flex-1 items-center justify-center gap-6 lg:flex">
+                <nav className="hidden min-w-0 flex-1 flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:flex sm:gap-x-4 lg:gap-x-6">
                     {navItems.map((item) => (
                         <NavLink
                             key={item.to}
                             to={item.to}
+                            end={Boolean(item.end)}
                             className={({ isActive }) =>
-                                `border-b-2 pb-1 text-sm font-medium transition-colors ${
+                                `shrink-0 border-b-2 pb-1 text-xs font-medium transition-colors sm:text-sm ${
                                     isActive
                                         ? 'border-blue-600 text-blue-600'
                                         : 'border-transparent text-gray-700 hover:border-blue-400 hover:text-blue-600'
@@ -62,10 +71,20 @@ function Header() {
                     ))}
                 </nav>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
+                    {dataUser?.id && !isLibraryStaff && (
+                        <div className="flex shrink-0 items-center gap-0.5 sm:hidden">
+                            <Button type="link" size="small" className="!px-1 text-xs" onClick={() => navigate('/infoUser?tab=profile')}>
+                                Hồ sơ
+                            </Button>
+                            <Button type="link" size="small" className="!px-1 text-xs" onClick={() => navigate('/infoUser?tab=history')}>
+                                Lịch sử
+                            </Button>
+                        </div>
+                    )}
                     <Input
                         size="small"
-                        className="w-40 sm:w-56"
+                        className="w-32 min-[400px]:w-40 sm:w-56"
                         placeholder="Tìm kiếm sách..."
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
@@ -78,19 +97,13 @@ function Header() {
                             <Dropdown
                                 menu={{
                                     items: [
-                                        {
-                                            key: 'profile',
-                                            icon: <UserOutlined />,
-                                            label: 'Thông tin cá nhân',
-                                            onClick: () => navigate('/infoUser?tab=info'),
-                                        },
                                         ...(!isLibraryStaff
                                             ? [
                                                   {
-                                                      key: 'settings',
-                                                      icon: <HistoryOutlined />,
-                                                      label: 'Lịch sử mượn',
-                                                      onClick: () => navigate('/infoUser?tab=history'),
+                                                      key: 'current',
+                                                      icon: <BookOutlined />,
+                                                      label: 'Sách đang mượn',
+                                                      onClick: () => navigate('/infoUser?tab=current'),
                                                   },
                                               ]
                                             : []),

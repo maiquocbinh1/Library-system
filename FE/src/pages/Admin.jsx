@@ -19,7 +19,7 @@ import {
     TagsOutlined,
     TeamOutlined,
     UserOutlined,
-    UserSwitchOutlined,
+    UsergroupAddOutlined,
 } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -35,6 +35,8 @@ import EmailLogManagement from './DashbroadComponents/EmailLogManagement';
 import CirculationDesk from './DashbroadComponents/CirculationDesk';
 import CategoryManagement from './DashbroadComponents/CategoryManagement';
 import SystemAuditLog from './DashbroadComponents/SystemAuditLog';
+import PersonnelManagement from './DashbroadComponents/PersonnelManagement';
+import FinancialReport from './DashbroadComponents/FinancialReport';
 import { requestLogout } from '../config/request';
 import { useStore } from '../hooks/useStore';
 import './admin-layout.css';
@@ -43,6 +45,7 @@ const { Header, Content, Sider } = Layout;
 
 const VIEW_COMPONENTS = {
     stats: <Statistics />,
+    finance: <FinancialReport />,
     'borrow-return': <CirculationDesk />,
     fines: <FineManagement />,
     book: <BookManagement />,
@@ -51,9 +54,9 @@ const VIEW_COMPONENTS = {
     'patron-profiles': <UserManagement />,
     'card-issue': <CardIssuanceManagement />,
     policy: <PolicyManagement />,
-    user: <UserManagement />,
     'audit-log': <SystemAuditLog />,
     'email-logs': <EmailLogManagement />,
+    personnel: <PersonnelManagement />,
 };
 
 const ADMIN_VIEW_KEYS = new Set(Object.keys(VIEW_COMPONENTS));
@@ -92,13 +95,20 @@ const sectionLabel = (text) => ({
 });
 
 function buildMenuItems(isAdmin) {
+    const dashboardChildren = [
+        { key: 'stats', icon: <DashboardOutlined />, label: 'Thống kê & phân tích' },
+    ];
+    if (!isAdmin) {
+        dashboardChildren.push({ key: 'finance', icon: <DollarOutlined />, label: 'Tài chính' });
+    }
+
     const items = [
         sectionLabel('I. Bảng điều khiển trung tâm'),
         {
             key: 'overview',
             icon: <PieChartOutlined />,
             label: 'Dashboard',
-            children: [{ key: 'stats', icon: <DashboardOutlined />, label: 'Thống kê & phân tích' }],
+            children: dashboardChildren,
         },
         sectionLabel('II. Nghiệp vụ lưu thông'),
         {
@@ -140,10 +150,11 @@ function buildMenuItems(isAdmin) {
             icon: <SettingOutlined />,
             label: 'Hệ thống',
             children: [
-                { key: 'user', icon: <UserSwitchOutlined />, label: 'Quản lý nhân sự & quyền' },
+                { key: 'personnel', icon: <UsergroupAddOutlined />, label: 'Quản lý nhân sự' },
                 { key: 'audit-log', icon: <FileSearchOutlined />, label: 'Nhật ký hệ thống (Audit)' },
                 { key: 'policy', icon: <ControlOutlined />, label: 'Cấu hình chính sách' },
                 { key: 'email-logs', icon: <MailOutlined />, label: 'Nhật ký gửi thư' },
+                { key: 'finance', icon: <DollarOutlined />, label: 'Tài chính' },
             ],
         });
     }

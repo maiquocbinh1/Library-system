@@ -11,7 +11,8 @@ const userMongoSchema = new mongoose.Schema(
         address: { type: String, default: null },
         email: { type: String, required: true },
         password: { type: String, default: null },
-        role: { type: String, enum: ['admin', 'user', 'librarian'], default: 'user' },
+        /** `warehouse`: nhân viên kho — cùng nhóm quyền quầy với thủ thư (libraryStaff), không phải độc giả. */
+        role: { type: String, enum: ['admin', 'user', 'librarian', 'warehouse'], default: 'user' },
         typeLogin: { type: String, enum: ['google', 'email'], required: true },
 
         /** MSV — sparse unique (không default null để tránh trùng index khi nhiều doc không có MSV) */

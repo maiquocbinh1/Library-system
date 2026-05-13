@@ -17,6 +17,11 @@ const loanTicketMongoSchema = new mongoose.Schema(
             type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'BookCopyMongo' }],
             default: [],
         },
+        /** Snapshot bản sao đã xuất — giữ sau khi trả để lịch sử / báo cáo vẫn biết mã cuốn đã mượn */
+        issuedBookCopyIds: {
+            type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'BookCopyMongo' }],
+            default: [],
+        },
         borrowDate: { type: Date, required: true },
         dueDate: { type: Date, default: null, index: true },
         returnedAt: { type: Date, default: null },

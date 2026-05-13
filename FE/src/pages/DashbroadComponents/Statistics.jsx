@@ -3,7 +3,7 @@ import {
     Row, Col, Card, Statistic, Modal, Table, Input, Select, Tag,
     Button, Slider, Progress, message, Tooltip, Form, Spin,
 } from 'antd';
-import { Bar, Pie } from '@ant-design/charts';
+import { Bar } from '@ant-design/charts';
 import {
     UserOutlined, BookOutlined, SolutionOutlined, ReadOutlined,
     WarningOutlined, DollarCircleOutlined, BarChartOutlined,
@@ -21,16 +21,6 @@ import { isPendingApproval } from '../../utils/loanTicketStatus';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const fmtVnd = (v) => Number(v || 0).toLocaleString('vi-VN') + ' đ';
-
-const statusColor = (raw) => {
-    const s = String(raw || '').toLowerCase();
-    if (s.includes('chờ') || s.includes('pending')) return '#22c55e';
-    if (s === 'borrowing') return '#3b82f6';
-    if (s.includes('từ') || s === 'cancelled') return '#f97316';
-    if (s === 'overdue') return '#ef4444';
-    if (s === 'returned') return '#10b981';
-    return '#6366f1';
-};
 
 // ─── EIS KPI Card ─────────────────────────────────────────────────────────────
 function KpiCard({ title, subtitle, value, percent, progressColor, extra, pulse }) {
@@ -230,8 +220,6 @@ const Statistics = () => {
     };
 
     // ── memos ─────────────────────────────────────────────────────────────────
-    const loanStatusData = Array.isArray(data?.loanStatusData) ? data.loanStatusData : [];
-
     const filteredUsers = useMemo(() => {
         const q = String(searchText || '').trim().toLowerCase();
         return users.filter((u) => {
@@ -292,12 +280,6 @@ const Statistics = () => {
                 if (cat) openDrilldown(cat);
             });
         },
-    };
-
-    const pieConfig = {
-        data: loanStatusData, angleField: 'count', colorField: 'status', radius: 1, innerRadius: 0.62,
-        legend: { position: 'bottom' }, color: (d) => statusColor(d?.status), label: false,
-        statistic: { title: false, content: { content: `Tổng\n${loanStatusData.reduce((s, x) => s + Number(x?.count || 0), 0)}`, style: { whiteSpace: 'pre-wrap', fontSize: 14, fontWeight: 700 } } },
     };
 
     // ── EIS overdue badge ─────────────────────────────────────────────────────
@@ -390,23 +372,6 @@ const Statistics = () => {
                     </Card>
                 </Col>
             </Row>
-            <Row gutter={16}>
-                <Col xs={24} sm={12} lg={8}>
-                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
-                        <Statistic title={<span className="text-slate-500">Sách đang cho mượn</span>} value={data?.ticketsCurrentlyBorrowing ?? 0} suffix="phiếu" prefix={<ReadOutlined className="text-indigo-600" />} />
-                    </Card>
-                </Col>
-                <Col xs={24} sm={12} lg={8}>
-                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
-                        <Statistic title={<span className="text-slate-500">Sách quá hạn chưa trả</span>} value={data?.ticketsOverdueNotReturned ?? 0} suffix="phiếu" prefix={<WarningOutlined className="text-amber-600" />} />
-                    </Card>
-                </Col>
-                <Col xs={24} sm={12} lg={8}>
-                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
-                        <Statistic title={<span className="text-slate-500">Tổng tiền phạt chờ thu</span>} value={data?.totalUnpaidFineAmount ?? 0} formatter={(v) => fmtVnd(v)} prefix={<DollarCircleOutlined className="text-rose-600" />} />
-                    </Card>
-                </Col>
-            </Row>
 
             {/* ── EIS KPIs section ────────────────────────────────────────────── */}
             <div>
@@ -420,12 +385,21 @@ const Statistics = () => {
                         <Col xs={24} sm={12} xl={6}>
                             <KpiCard
                                 title="Tỷ lệ khai thác kho sách"
+                                subtitle="Phiếu đang mượn"
                                 value={`${kpis?.utilization_rate ?? '—'}%`}
                                 percent={kpis?.utilization_rate ?? 0}
                                 progressColor="#6366f1"
                                 extra={
-                                    <div className="flex justify-between text-[11px] text-slate-400">
-                                        <span>Kho nhàn rỗi</span><span>Lưu thông</span>
+                                    <div className="space-y-2 text-[11px]">
+                                        <div className="flex justify-between text-slate-400">
+                                            <span>Kho nhàn rỗi</span><span>Lưu thông</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-slate-100 pt-2 text-slate-600">
+                                            <span className="inline-flex items-center gap-1">
+                                                <ReadOutlined className="text-indigo-500" />
+                                                Đang mượn: <b className="text-slate-800">{data?.ticketsCurrentlyBorrowing ?? 0}</b> phiếu
+                                            </span>
+                                        </div>
                                     </div>
                                 }
                             />
@@ -453,6 +427,15 @@ const Statistics = () => {
                                 percent={kpis?.overdue_rate ?? 0}
                                 progressColor={overdueRate > 20 ? '#ef4444' : overdueRate > 10 ? '#f59e0b' : '#22c55e'}
                                 pulse={overdueRate > 20}
+                                extra={
+                                    <div className="border-t border-slate-100 pt-2 text-[11px] text-slate-600">
+                                        <span className="inline-flex items-center gap-1">
+                                            <WarningOutlined className="text-amber-500" />
+                                            Phiếu quá hạn chưa trả:{' '}
+                                            <b className="text-slate-800">{data?.ticketsOverdueNotReturned ?? 0}</b>
+                                        </span>
+                                    </div>
+                                }
                             />
                         </Col>
                         {/* KPI 4: Thu hồi nợ */}
@@ -471,7 +454,16 @@ const Statistics = () => {
                                 }
                                 percent={collectedPct}
                                 progressColor={{ from: '#22c55e', to: '#16a34a' }}
-                                extra={<div className="text-[11px] text-slate-400">{collectedPct}% đã thu hồi</div>}
+                                extra={
+                                    <div className="space-y-1 text-[11px] text-slate-400">
+                                        <div>{collectedPct}% đã thu hồi</div>
+                                        <div className="flex flex-wrap items-center gap-1 text-slate-500">
+                                            <DollarCircleOutlined className="text-rose-500" />
+                                            <span>Phạt chờ thu (tổng hợp):</span>
+                                            <b className="text-slate-700">{fmtVnd(data?.totalUnpaidFineAmount ?? 0)}</b>
+                                        </div>
+                                    </div>
+                                }
                             />
                         </Col>
                     </Row>
@@ -556,27 +548,6 @@ const Statistics = () => {
                     </Card>
                 </Col>
             </Row>
-
-            {/* ── Biểu đồ trạng thái mượn sách (giữ nguyên) ────────────────── */}
-            <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }} title={<span className="font-semibold">Tình trạng mượn sách</span>}>
-                {loanStatusData.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-                        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-5">
-                            <div className="mb-2 text-xs font-semibold text-slate-500">Tỷ lệ theo trạng thái</div>
-                            <Pie {...pieConfig} />
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-7">
-                            <div className="mb-2 text-xs font-semibold text-slate-500">Số lượng theo trạng thái</div>
-                            <Bar data={loanStatusData} xField="count" yField="status" seriesField="status"
-                                color={(d) => statusColor(d?.status)} legend={false}
-                                tooltip={{ formatter: (d) => ({ name: d?.status, value: d?.count }) }}
-                                barStyle={{ radius: [10, 10, 10, 10] }} />
-                        </div>
-                    </div>
-                ) : (
-                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-slate-500">Chưa có dữ liệu</div>
-                )}
-            </Card>
 
             {/* ── Bảng cảnh báo: Độc giả rủi ro cao ───────────────────────────── */}
             <Card

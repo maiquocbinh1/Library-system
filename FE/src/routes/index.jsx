@@ -1,18 +1,23 @@
-import Home from '../pages/Home';
+import { Navigate } from 'react-router-dom';
+import Categories from '../pages/Categories';
 import DetailProduct from '../pages/DetailProduct';
 import Login from '../pages/Login';
 import RegisterUser from '../pages/RegisterUser';
 import Admin from '../pages/Admin';
 import InfoUser from '../pages/InfoUser';
 import ForgotPassword from '../pages/ForgotPassword';
-import Categories from '../pages/Categories';
 import Rules from '../pages/Rules';
 import Contact from '../pages/Contact';
 import AdminRoute from '../components/AdminRoute';
+
 export const routes = [
     {
         path: '/',
-        component: <Home />,
+        component: <Categories />,
+    },
+    {
+        path: '/categories',
+        component: <Navigate to="/" replace />,
     },
     {
         path: '/product/:id',
@@ -49,10 +54,6 @@ export const routes = [
     {
         path: '/forgot-password',
         component: <ForgotPassword />,
-    },
-    {
-        path: '/categories',
-        component: <Categories />,
     },
     {
         path: '/rules',

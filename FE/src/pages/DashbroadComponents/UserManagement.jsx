@@ -14,7 +14,7 @@ import {
 } from '../../config/request';
 import { READER_TYPE_OPTIONS } from '../../constants/readerTypes';
 import dayjs from 'dayjs';
-import { loanStatusMeta } from '../../utils/loanTicketStatus';
+import { loanStatusMeta, normalizeLoanStatusKey } from '../../utils/loanTicketStatus';
 
 const { Search } = Input;
 
@@ -268,7 +268,8 @@ const UserManagement = () => {
     };
 
     const filteredData = useMemo(() => {
-        const users = data.filter((u) => u.role !== 'admin' && u.role !== 'librarian');
+        /** Chỉ độc giả (patron) — không hiển thị admin, thủ thư, nhân viên kho. */
+        const users = data.filter((u) => String(u.role || '').toLowerCase() === 'user');
         if (activeTab === 'all') return users;
         if (activeTab === 'active') return users.filter((u) => u.verificationStatus === 'verified');
         if (activeTab === 'fined') return users.filter((u) => riskMap[u.id]?.totalFine > 0);
@@ -283,6 +284,26 @@ const UserManagement = () => {
         { key: 'overdue', label: 'Có sách quá hạn' },
     ];
 
+    /** Hiển thị mã vạch / mã bản sao từ bookCopies (API get-all-history-book). */
+    const formatLoanCopyCodes = (row) => {
+        const copies = Array.isArray(row?.bookCopies) ? row.bookCopies : [];
+        const statusKey = normalizeLoanStatusKey(row?.status);
+        const isTerminal = statusKey === 'RETURNED' || statusKey === 'CANCELLED';
+
+        if (!copies.length) return '—';
+        const hasPendingPlaceholder = copies.some((c) => !c?.copyId && (c?.status === 'PENDING' || c?.barcode == null));
+        if (hasPendingPlaceholder && copies.every((c) => !c?.barcode)) {
+            return isTerminal ? '—' : 'Chờ xuất kho';
+        }
+        const parts = copies.map((c) => {
+            const b = c?.barcode != null && String(c.barcode).trim() !== '' ? String(c.barcode).trim() : '';
+            if (b) return b;
+            if (c?.copyId) return `ID:${String(c.copyId).slice(-8)}`;
+            return '';
+        }).filter(Boolean);
+        return parts.length ? [...new Set(parts)].join(', ') : '—';
+    };
+
     return (
         <div>
             <div className="mb-4 flex justify-between">
@@ -294,10 +315,10 @@ const UserManagement = () => {
 
             <Drawer
                 title={detailUser ? `Chi tiết độc giả — ${detailUser.fullName || ''}` : 'Chi tiết'}
-                width={720}
+                width={820}
                 open={detailOpen}
                 onClose={() => { setDetailOpen(false); setDetailUser(null); }}
-                destroyOnClose
+                destroyOnHidden
             >
                 {detailUser && (
                     <div className="flex flex-col gap-4">
@@ -345,12 +366,30 @@ const UserManagement = () => {
                                 },
                                 { title: 'Ngày', dataIndex: 'borrowDate', width: 110, render: (d) => (d && dayjs(d).isValid() ? dayjs(d).format('DD/MM/YYYY') : '—') },
                                 {
+                                    title: 'Mã đầu sách',
+                                    key: 'bookCode',
+                                    width: 120,
+                                    ellipsis: true,
+                                    render: (_, r) => {
+                                        const c = r?.product?.bookCode ?? r?.product?.code;
+                                        return c ? <span className="font-mono text-xs">{String(c)}</span> : '—';
+                                    },
+                                },
+                                {
+                                    title: 'Mã bản sao',
+                                    key: 'copyBarcodes',
+                                    width: 140,
+                                    ellipsis: true,
+                                    render: (_, r) => <span className="font-mono text-xs">{formatLoanCopyCodes(r)}</span>,
+                                },
+                                {
                                     title: 'Đầu sách',
                                     key: 't',
                                     ellipsis: true,
                                     render: (_, r) => r?.product?.title || r?.product?.nameProduct || '—',
                                 },
                             ]}
+                            scroll={{ x: 640 }}
                         />
                         <Typography.Title level={5}>Phiếu phạt</Typography.Title>
                         <Table
@@ -362,6 +401,18 @@ const UserManagement = () => {
                             columns={[
                                 { title: 'Số tiền', dataIndex: 'fineAmount', width: 120, render: (v) => `${Number(v || 0).toLocaleString('vi-VN')} đ` },
                                 { title: 'Trạng thái', dataIndex: 'status', width: 100, render: (s) => (s === 'PAID' ? <Tag color="success">Đã nộp</Tag> : <Tag color="warning">Chưa nộp</Tag>) },
+                                {
+                                    title: 'Sách vi phạm',
+                                    key: 'violationBook',
+                                    width: 200,
+                                    ellipsis: true,
+                                    render: (_, r) => {
+                                        const vb = r?.violationBook;
+                                        if (!vb || (!vb.title && !vb.bookCode && !(vb.copyBarcodes || []).length)) return '—';
+                                        const parts = [vb.title, vb.bookCode, (vb.copyBarcodes || []).join(', ')].filter(Boolean);
+                                        return parts.join(' · ');
+                                    },
+                                },
                                 { title: 'Lý do', dataIndex: 'reason', ellipsis: true },
                             ]}
                         />

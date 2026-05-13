@@ -38,7 +38,7 @@ async function run() {
 
     const adminEmail = String(process.env.ADMIN_EMAIL || 'admin@ptit.edu.vn').toLowerCase();
     const adminPassword = String(process.env.ADMIN_PASSWORD || 'Admin@123456');
-    const adminFullName = String(process.env.ADMIN_FULLNAME || 'Quản trị hệ thống');
+    const adminFullName = String(process.env.ADMIN_FULLNAME || 'Mai Van B');
 
     const keep = new Set([adminEmail, ...DEMO_EMAILS.map((e) => e.toLowerCase())]);
 

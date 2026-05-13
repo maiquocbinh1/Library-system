@@ -24,7 +24,7 @@ function isPatronPending(user) {
 
 /** Đủ điều kiện mượn sách: có MSV hợp lệ và không đang chờ duyệt. */
 function canBorrowAsPatron(user) {
-    if (!user || user.role === 'admin') return false;
+    if (!user || user.role === 'admin' || user.role === 'librarian' || user.role === 'warehouse') return false;
     if (user.libraryCardBlocked) return false;
     if (isPatronPending(user)) return false;
     return Boolean(getPatronCodeString(user));

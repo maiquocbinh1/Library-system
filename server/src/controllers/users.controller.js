@@ -23,6 +23,7 @@ const LoanTicketMongo = require('../models/loanTicket.mongo.model');
 const FineTicketMongo = require('../models/fineTicket.mongo.model');
 const sendMailForgotPassword = require('../utils/sendMailForgotPassword');
 const dayjs = require('dayjs');
+const { logAdminAction, AuditActions } = require('../utils/logAdminAction');
 
 require('dotenv').config();
 
@@ -480,12 +481,35 @@ class controllerUser {
             throw new BadRequestError('Người dùng không tồn tại');
         }
 
+        const oldSnap = {
+            fullName: user.fullName,
+            phone: user.phone,
+            email: user.email,
+            role: user.role,
+            address: user.address,
+        };
+
         user.fullName = fullName ?? user.fullName;
         user.phone = phone ?? user.phone;
         user.email = email ?? user.email;
         user.role = role ?? user.role;
         user.address = address ?? user.address;
         await user.save();
+
+        await logAdminAction({
+            req,
+            action: AuditActions.USER_UPDATED,
+            targetId: String(user._id),
+            targetType: 'USER',
+            oldValues: oldSnap,
+            newValues: {
+                fullName: user.fullName,
+                phone: user.phone,
+                email: user.email,
+                role: user.role,
+                address: user.address,
+            },
+        });
 
         new OK({ message: 'Cập nhật người dùng thành công' }).send(res);
     }
@@ -496,11 +520,20 @@ class controllerUser {
         if (!userId) throw new BadRequestError('Thiếu userId');
         const user = await findUserByAnyId(userId);
         if (!user) throw new BadRequestError('Người dùng không tồn tại');
-        if (user.role === 'admin' || user.role === 'librarian') {
+        if (user.role === 'admin' || user.role === 'librarian' || user.role === 'warehouse') {
             throw new BadRequestError('Không áp dụng cho tài khoản nhân sự');
         }
+        const prevBlocked = Boolean(user.libraryCardBlocked);
         user.libraryCardBlocked = Boolean(blocked);
         await user.save();
+        await logAdminAction({
+            req,
+            action: AuditActions.PATRON_CARD_LOCK,
+            targetId: String(user._id),
+            targetType: 'USER',
+            oldValues: { libraryCardBlocked: prevBlocked },
+            newValues: { libraryCardBlocked: user.libraryCardBlocked },
+        });
         new OK({
             message: blocked ? 'Đã khóa thẻ độc giả' : 'Đã mở khóa thẻ độc giả',
         }).send(res);
@@ -545,8 +578,25 @@ class controllerUser {
         }
 
         const userObjectId = String(user._id);
+        const deletedSnapshot = {
+            id: userObjectId,
+            mysqlId: user.mysqlId,
+            fullName: user.fullName,
+            email: user.email,
+            role: user.role,
+            studentId: user.studentId || user.idStudent || null,
+        };
         await UserMongo.deleteOne({ _id: user._id });
         await ApiKeyMongo.deleteMany({ userId: userObjectId });
+
+        await logAdminAction({
+            req,
+            action: AuditActions.USER_DELETED,
+            targetId: userObjectId,
+            targetType: 'USER',
+            oldValues: deletedSnapshot,
+            newValues: null,
+        });
 
         new OK({ message: 'Xóa người dùng thành công' }).send(res);
     }
@@ -560,7 +610,35 @@ class controllerUser {
 
         user.password = bcrypt.hashSync(password, bcrypt.genSaltSync(10));
         await user.save();
+        await logAdminAction({
+            req,
+            action: AuditActions.USER_PASSWORD_RESET_BY_ADMIN,
+            targetId: String(user._id),
+            targetType: 'USER',
+            oldValues: { email: user.email },
+            newValues: { passwordUpdated: true },
+        });
         new OK({ message: 'Cập nhật mật khẩu thành công' }).send(res);
+    }
+
+    /** Độc giả / người dùng đổi mật khẩu khi đã đăng nhập (không cần quyền admin). */
+    async changeOwnPassword(req, res) {
+        const { id } = req.user;
+        const { currentPassword, newPassword } = req.body || {};
+        if (!currentPassword || !newPassword) {
+            throw new BadRequestError('Vui lòng nhập mật khẩu hiện tại và mật khẩu mới');
+        }
+        const np = String(newPassword).trim();
+        if (np.length < 8) {
+            throw new BadRequestError('Mật khẩu mới tối thiểu 8 ký tự');
+        }
+        const user = await findUserByAnyId(id);
+        if (!user) throw new BadRequestError('Người dùng không tồn tại');
+        const ok = bcrypt.compareSync(String(currentPassword), user.password || '');
+        if (!ok) throw new BadRequestError('Mật khẩu hiện tại không đúng');
+        user.password = bcrypt.hashSync(np, bcrypt.genSaltSync(10));
+        await user.save();
+        new OK({ message: 'Đã cập nhật mật khẩu thành công' }).send(res);
     }
 
     async requestIdStudent(req, res) {

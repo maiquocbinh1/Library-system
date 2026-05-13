@@ -1,20 +1,24 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { PLACEHOLDER_BOOK_COVER, resolveBookCoverUrl } from '../utils/resolveBookCoverUrl';
 
 function BookCard({ book }) {
-    const imageSrc = (() => {
-        const raw = String(book?.image || '').trim();
-        if (!raw) return '/placeholder-book.png';
-        if (raw.startsWith('http')) return raw;
-        return `${import.meta.env.VITE_API_URL_IMAGE}/${raw}`;
-    })();
+    const imageSrc = resolveBookCoverUrl(book?.image);
     const isInStock = Number(book?.stock) > 0;
     const bookId = book?.id || book?._id || '';
 
     return (
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl">
             <div className="aspect-[2/3] overflow-hidden rounded-md bg-gray-100">
-                <img src={imageSrc} alt={book?.nameProduct || 'Book cover'} className="h-full w-full object-cover" />
+                <img
+                    src={imageSrc}
+                    alt={book?.nameProduct || 'Book cover'}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                        if (e.currentTarget.src.includes('placeholder-book')) return;
+                        e.currentTarget.src = PLACEHOLDER_BOOK_COVER;
+                    }}
+                />
             </div>
 
             <div className="mt-3 space-y-2">

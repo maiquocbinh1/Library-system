@@ -191,7 +191,7 @@ const CategoryManagement = () => {
                 open={modalOpen}
                 onOk={handleModalOk}
                 onCancel={() => setModalOpen(false)}
-                destroyOnClose
+                destroyOnHidden
             >
                 <Form form={form} layout="vertical">
                     <Form.Item name="name" label="Tên thể loại" rules={[{ required: true, message: 'Nhập tên' }]}>

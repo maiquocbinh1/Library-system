@@ -138,7 +138,7 @@ async function run() {
     console.log('Đang tạo Admin...');
     const adminUser = await UserMongo.create({
         mysqlId: random36(),
-        fullName: 'Quản Trị Viên (Thủ thư)',
+        fullName: 'Mai Van B',
         email: 'admin@ptit.edu.vn',
         password: passwordHash,
         typeLogin: 'email',

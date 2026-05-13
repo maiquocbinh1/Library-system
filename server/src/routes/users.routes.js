@@ -34,6 +34,7 @@ router.get('/get-users', authUser, isAdmin, asyncHandler(controllerUser.getUsers
 router.post('/update-user-admin', authUser, isAdmin, asyncHandler(controllerUser.updateUser));
 router.post('/delete-user', authUser, isAdmin, asyncHandler(controllerUser.deleteUser));
 router.post('/update-password', authUser, isAdmin, asyncHandler(controllerUser.updatePassword));
+router.post('/change-own-password', authUser, asyncHandler(controllerUser.changeOwnPassword));
 router.post('/upload-image', upload.single('image'), authUser, asyncHandler(controllerUser.changeAvatar));
 
 router.post('/request-id-student', authUser, asyncHandler(controllerUser.requestIdStudent));

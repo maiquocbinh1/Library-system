@@ -89,6 +89,12 @@ export const requestUpdatePassword = async (data) => {
     return res.data;
 };
 
+/** Đổi mật khẩu khi đã đăng nhập (mật khẩu cũ + mới). */
+export const requestChangeOwnPassword = async (data) => {
+    const res = await apiClient.post(`${apiUser}/change-own-password`, data);
+    return res.data;
+};
+
 export const requestGetRequestLoan = async () => {
     const res = await apiClient.get(`${apiUser}/get-request-loan`);
     return res.data;
@@ -367,12 +373,68 @@ export const requestGetUnusedBooks = async () => {
     return res.data;
 };
 
-export const requestExportHighRisk = () => {
-    window.open(`${import.meta.env.VITE_API_URL}${apiAdmin}/dss/export/high-risk`, '_blank');
+export const requestExportHighRisk = async () => {
+    const res = await apiClient.get(`${apiAdmin}/dss/export/high-risk`, { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([res.data]));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'doc_gia_rui_ro.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 };
 
-export const requestExportUnusedBooks = () => {
-    window.open(`${import.meta.env.VITE_API_URL}${apiAdmin}/dss/export/unused-books`, '_blank');
+export const requestExportUnusedBooks = async () => {
+    const res = await apiClient.get(`${apiAdmin}/dss/export/unused-books`, { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([res.data]));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sach_it_tuong_tac.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
+
+// ─── HR / Nhân sự & Audit (chỉ Admin) — `/api/admin/staff` ───────────────────
+const apiStaff = `${apiAdmin}/staff`;
+
+/** Danh sách tài khoản thủ thư (role librarian) */
+export const requestGetStaffList = async () => {
+    const res = await apiClient.get(apiStaff);
+    return res.data;
+};
+
+/** Admin tạo thủ thư: { email, password, fullName, phone?, address? } */
+export const requestCreateStaffUser = async (data) => {
+    const res = await apiClient.post(apiStaff, data);
+    return res.data;
+};
+
+/** Admin xóa thủ thư / kho — userId là Mongo _id */
+export const requestDeleteStaffUser = async (userId) => {
+    const res = await apiClient.delete(`${apiStaff}/${encodeURIComponent(userId)}`);
+    return res.data;
+};
+
+/** Admin sửa thủ thư / kho — PATCH { fullName, email, staffRole?, phone?, address?, password? } */
+export const requestUpdateStaffUser = async (userId, data) => {
+    const res = await apiClient.patch(`${apiStaff}/${encodeURIComponent(userId)}`, data);
+    return res.data;
+};
+
+/** Nhật ký kiểm toán — query: page, limit, action, adminId, targetType */
+export const requestGetStaffAuditLogs = async (params = {}) => {
+    const sp = new URLSearchParams();
+    if (params.page != null) sp.set('page', String(params.page));
+    if (params.limit != null) sp.set('limit', String(params.limit));
+    if (params.action) sp.set('action', String(params.action));
+    if (params.adminId) sp.set('adminId', String(params.adminId));
+    if (params.targetType) sp.set('targetType', String(params.targetType));
+    const q = sp.toString();
+    const res = await apiClient.get(`${apiStaff}/audit-logs${q ? `?${q}` : ''}`);
+    return res.data;
 };
 
 // ─── OAS ─────────────────────────────────────────────────────────────────────

@@ -1,24 +1,38 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Card, Table, Tag, Button, message, Input, Space, Row, Col, Statistic, Modal } from 'antd';
+import { Card, Table, Tag, Button, message, Input, Space, Row, Col, Statistic } from 'antd';
 import { ExportOutlined, DollarCircleOutlined, WarningOutlined, CheckCircleOutlined, PrinterOutlined } from '@ant-design/icons';
 import { requestGetAllFines, requestPayFine } from '../../config/request';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
 
 function exportToExcel(data) {
-    const rows = data.map((r) => ({
-        MSV: r?.user?.studentId || r?.studentId || '—',
-        'Họ tên': r?.user?.fullName || '—',
-        'Số ngày trễ': r?.overdueDays || 0,
-        'Tiền phạt (VNĐ)': r?.fineAmount || 0,
-        'Lý do': r?.reason || '',
-        'Trạng thái': r?.status === 'PAID' ? 'Đã nộp' : 'Chưa nộp',
-        'Ngày tạo': r?.createdAt ? dayjs(r.createdAt).format('DD/MM/YYYY') : '',
-    }));
+    const rows = data.map((r) => {
+        const vb = r?.violationBook;
+        const sach = vb
+            ? [vb.title, vb.bookCode, (vb.copyBarcodes || []).join('; ')].filter(Boolean).join(' | ')
+            : '';
+        return {
+            MSV: r?.user?.studentId || r?.user?.idStudent || r?.studentId || '—',
+            'Họ tên': r?.user?.fullName || '—',
+            'Sách vi phạm': sach || '—',
+            'Số ngày trễ': r?.overdueDays || 0,
+            'Tiền phạt (VNĐ)': r?.fineAmount || 0,
+            'Lý do': r?.reason || '',
+            'Trạng thái': r?.status === 'PAID' ? 'Đã nộp' : 'Chưa nộp',
+            'Ngày tạo': r?.createdAt ? dayjs(r.createdAt).format('DD/MM/YYYY') : '',
+        };
+    });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Phiếu phạt');
     XLSX.writeFile(wb, 'danh_sach_phat.xlsx');
+}
+
+function escHtml(s) {
+    return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 function openFineReceiptWindow(row, title) {
@@ -27,11 +41,17 @@ function openFineReceiptWindow(row, title) {
         message.error('Trình duyệt đã chặn cửa sổ mới — cho phép popup để in biên lai');
         return;
     }
-    const msv = row?.user?.studentId || row?.studentId || '—';
+    const msv = row?.user?.studentId || row?.user?.idStudent || row?.studentId || '—';
     const name = row?.user?.fullName || '—';
     const amt = Number(row?.fineAmount || 0).toLocaleString('vi-VN');
     const status = row?.status === 'PAID' ? 'Đã nộp' : 'Chưa nộp';
     const reason = String(row?.reason || '');
+    const vb = row?.violationBook;
+    const sachVp = vb
+        ? [vb.title, vb.bookCode ? `Mã đầu sách: ${vb.bookCode}` : '', (vb.copyBarcodes || []).length ? `Bản sao: ${vb.copyBarcodes.join(', ')}` : '']
+              .filter(Boolean)
+              .join(' · ')
+        : '—';
     const pid = row?.id || row?._id || '';
     const when = dayjs(row?.updatedAt || row?.createdAt).isValid()
         ? dayjs(row.updatedAt || row.createdAt).format('DD/MM/YYYY HH:mm')
@@ -44,12 +64,13 @@ td{padding:8px 0;vertical-align:top;border-bottom:1px solid #e2e8f0;} td:first-c
 <h1>${title}</h1>
 <p class="muted">Thư viện PTIT · ${when}</p>
 <table>
-<tr><td>MSV / MSG</td><td><strong>${msv}</strong></td></tr>
-<tr><td>Họ tên</td><td>${name}</td></tr>
-<tr><td>Số tiền</td><td><strong>${amt} đ</strong></td></tr>
-<tr><td>Trạng thái</td><td>${status}</td></tr>
-<tr><td>Lý do</td><td>${reason || '—'}</td></tr>
-<tr><td>Mã phiếu</td><td style="font-family:monospace;font-size:12px;">${pid}</td></tr>
+<tr><td>MSV / MSG</td><td><strong>${escHtml(msv)}</strong></td></tr>
+<tr><td>Họ tên</td><td>${escHtml(name)}</td></tr>
+<tr><td>Số tiền</td><td><strong>${escHtml(amt)} đ</strong></td></tr>
+<tr><td>Trạng thái</td><td>${escHtml(status)}</td></tr>
+<tr><td>Lý do</td><td>${escHtml(reason || '—')}</td></tr>
+<tr><td>Sách vi phạm</td><td>${escHtml(sachVp)}</td></tr>
+<tr><td>Mã phiếu</td><td style="font-family:monospace;font-size:12px;">${escHtml(pid)}</td></tr>
 </table>
 <p class="sign">Chữ ký thủ thư: _______________</p>
 </body></html>`;
@@ -104,19 +125,52 @@ const FineManagement = () => {
         const q = String(searchText || '').trim().toLowerCase();
         if (!q) return data;
         return data.filter((row) => {
-            const msv = String(row?.user?.studentId || row?.studentId || '').toLowerCase();
+            const msv = String(row?.user?.studentId || row?.user?.idStudent || row?.studentId || '').toLowerCase();
             const name = String(row?.user?.fullName || '').toLowerCase();
             const reason = String(row?.reason || '').toLowerCase();
-            return msv.includes(q) || name.includes(q) || reason.includes(q);
+            const vb = row?.violationBook;
+            const vioStr = [vb?.title, vb?.bookCode, ...(vb?.copyBarcodes || [])].filter(Boolean).join(' ').toLowerCase();
+            return msv.includes(q) || name.includes(q) || reason.includes(q) || vioStr.includes(q);
         });
     }, [data, searchText]);
+
+    const violationBookColumn = {
+        title: 'Sách vi phạm',
+        key: 'violationBook',
+        width: 260,
+        ellipsis: true,
+        render: (_, row) => {
+            const vb = row?.violationBook;
+            if (!vb || (!vb.title && !vb.bookCode && !(vb.copyBarcodes || []).length)) {
+                return <span className="text-slate-400">—</span>;
+            }
+            return (
+                <div className="max-w-[240px] text-sm">
+                    {vb.title ? <div className="font-medium text-slate-800">{vb.title}</div> : null}
+                    <div className="mt-0.5 flex flex-wrap gap-1">
+                        {vb.bookCode ? (
+                            <Tag color="blue" className="!m-0 font-mono text-xs">
+                                {vb.bookCode}
+                            </Tag>
+                        ) : null}
+                    </div>
+                    {(vb.copyBarcodes || []).length > 0 ? (
+                        <div className="mt-1 text-xs text-slate-500">
+                            Bản sao:{' '}
+                            <span className="font-mono text-slate-700">{vb.copyBarcodes.join(', ')}</span>
+                        </div>
+                    ) : null}
+                </div>
+            );
+        },
+    };
 
     const columns = [
         {
             title: 'Mã MSV / MSG',
             key: 'msv',
             width: 140,
-            render: (_, row) => row?.user?.studentId || row?.studentId || '—',
+            render: (_, row) => row?.user?.studentId || row?.user?.idStudent || row?.studentId || '—',
         },
         {
             title: 'Tên độc giả',
@@ -124,6 +178,7 @@ const FineManagement = () => {
             ellipsis: true,
             render: (_, row) => row?.user?.fullName || '—',
         },
+        violationBookColumn,
         {
             title: 'Số ngày trễ',
             dataIndex: 'overdueDays',
@@ -222,7 +277,7 @@ const FineManagement = () => {
                     <Space wrap>
                         <Input.Search
                             allowClear
-                            placeholder="Tìm MSV, tên, lý do..."
+                            placeholder="Tìm MSV, tên, sách, mã bản sao, lý do..."
                             className="max-w-xs"
                             value={searchText}
                             onChange={(e) => setSearchText(e.target.value)}
@@ -236,7 +291,7 @@ const FineManagement = () => {
                     columns={columns}
                     dataSource={filtered}
                     loading={loading}
-                    scroll={{ x: 1100 }}
+                    scroll={{ x: 1320 }}
                     pagination={{ pageSize: 10, showSizeChanger: true }}
                     size="middle"
                     className="rounded-xl"

@@ -405,13 +405,13 @@ const BookManagement = () => {
             },
         },
         {
-            title: 'Tồn kho',
-            dataIndex: 'stock',
-            key: 'stock',
+            title: 'Tổng số sách',
+            dataIndex: 'totalCopies',
+            key: 'totalCopies',
             width: 120,
             align: 'center',
-            render: (stock) => {
-                const value = Number(stock || 0);
+            render: (_, record) => {
+                const value = Number(record?.totalCopies ?? record?.stock ?? 0);
                 return value < 5 ? <Text className="font-semibold text-red-500">{value}</Text> : <Text className="font-semibold text-slate-700">{value}</Text>;
             },
         },
@@ -496,7 +496,6 @@ const BookManagement = () => {
                                 <Form.Item
                                     label="Tổng số sách"
                                     name="stock"
-                                    extra="Tổng số sách (bản vật lý). Tăng → tự tạo bản mới ({Mã sách}-STT). Giảm → xóa bớt bản đang sẵn sàng (không xóa được bản đang mượn). Bấm 'Lưu thay đổi' để áp dụng."
                                     rules={[{ type: 'number', min: 0, message: 'Số lượng không hợp lệ' }]}
                                 >
                                     <InputNumber

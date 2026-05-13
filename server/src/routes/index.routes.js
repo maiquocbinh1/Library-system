@@ -5,6 +5,7 @@ const policyRoutes = require('./policy.routes');
 const fineRoutes = require('./fine.routes');
 const analyticsRoutes = require('./analytics.routes');
 const oasRoutes = require('./oas.routes');
+const staffRoutes = require('./staff.routes');
 
 function route(app) {
     app.use('/api/user', usersRoutes);
@@ -14,6 +15,7 @@ function route(app) {
     app.use('/api/fines', fineRoutes);
     app.use('/api/admin', analyticsRoutes);
     app.use('/api/admin/oas', oasRoutes);
+    app.use('/api/admin/staff', staffRoutes);
 }
 
 module.exports = route;

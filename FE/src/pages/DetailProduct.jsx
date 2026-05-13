@@ -50,14 +50,14 @@ function DetailProduct() {
             try {
                 if (!id) {
                     message.error('Không tìm thấy mã sách hợp lệ');
-                    navigate('/categories');
+                    navigate('/');
                     return;
                 }
                 const res = await requestGetOneProduct(id);
                 if (!res?.metadata) {
                     setDataProduct(null);
                     message.error('Sách không tồn tại hoặc đã bị xóa');
-                    navigate('/categories');
+                    navigate('/');
                     return;
                 }
                 const product = normalizeProduct(res?.metadata);
@@ -80,9 +80,7 @@ function DetailProduct() {
 
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-20">
                 <nav className="flex items-center space-x-2 text-sm text-gray-500">
-                    <Link to={'/'}>Trang chủ</Link>
-                    <span>/</span>
-                    <Link to={'/categories'}>Sách</Link>
+                    <Link to="/">Danh mục đầu sách</Link>
                     <span>/</span>
                     <span className="text-gray-700">Chi tiết sách</span>
                 </nav>

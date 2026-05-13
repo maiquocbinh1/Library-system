@@ -13,7 +13,13 @@ router.post('/cancel-book', authUser, asyncHandler(controllerLoanTicket.cancelBo
 // Admin / Thủ thư
 router.get('/get-all-history-book', authUser, libraryStaff, asyncHandler(controllerLoanTicket.getAllHistoryBook));
 router.post('/update-status-book', authUser, libraryStaff, asyncHandler(controllerLoanTicket.updateStatusBook));
-router.post('/return-books', authUser, libraryStaff, asyncHandler(controllerLoanTicket.returnBooks));
+// Route cũ đã deprecated — dùng /return-by-barcode thay thế
+router.post('/return-books', authUser, libraryStaff, (req, res) => {
+    res.status(410).json({
+        status: 'error',
+        message: 'API này đã ngừng hoạt động. Dùng POST /return-by-barcode thay thế.',
+    });
+});
 
 // ─── API mới — luồng barcode qltv_ptit ───────────────────────────────────────
 /** Thủ thư gõ barcode để xác nhận xuất kho (PENDING → BORROWING) */

@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 function Footer() {
     return (
         <footer className="bg-gray-800 text-white mt-auto">
@@ -17,24 +19,19 @@ function Footer() {
                         <h3 className="text-lg font-semibold mb-4">Liên kết nhanh</h3>
                         <ul className="space-y-2 text-sm">
                             <li>
-                                <a href="#" className="text-gray-300 hover:text-white transition-colors">
-                                    Trang chủ
-                                </a>
+                                <Link to="/" className="text-gray-300 hover:text-white transition-colors">
+                                    Danh mục đầu sách
+                                </Link>
                             </li>
                             <li>
-                                <a href="#" className="text-gray-300 hover:text-white transition-colors">
-                                    Danh mục sách
-                                </a>
-                            </li>
-                            <li>
-                                <a href="#" className="text-gray-300 hover:text-white transition-colors">
+                                <Link to="/rules" className="text-gray-300 hover:text-white transition-colors">
                                     Quy định mượn sách
-                                </a>
+                                </Link>
                             </li>
                             <li>
-                                <a href="#" className="text-gray-300 hover:text-white transition-colors">
+                                <Link to="/contact" className="text-gray-300 hover:text-white transition-colors">
                                     Liên hệ
-                                </a>
+                                </Link>
                             </li>
                         </ul>
                     </div>

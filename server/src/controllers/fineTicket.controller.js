@@ -2,9 +2,12 @@ const mongoose = require('mongoose');
 const FineTicketMongo = require('../models/fineTicket.mongo.model');
 const UserMongo = require('../models/user.mongo.model');
 const LoanTicketMongo = require('../models/loanTicket.mongo.model');
+const BookMongo = require('../models/book.mongo.model');
+const BookCopyMongo = require('../models/bookCopy.mongo.model');
 
 const { BadRequestError } = require('../core/error.response');
 const { OK } = require('../core/success.response');
+const { logAdminAction, AuditActions } = require('../utils/logAdminAction');
 
 async function findUserByAnyId(id) {
     if (!id) return null;
@@ -21,7 +24,62 @@ function userIdCandidates(user) {
     return ids;
 }
 
-function toClientFineRow(fine, userDoc, loanDoc) {
+/** Giống phiếu mượn: ưu tiên snapshot bản sao đã xuất (sau trả vẫn biết cuốn nào). */
+function copyIdsOnLoan(loanLean) {
+    if (!loanLean) return [];
+    const issued = loanLean.issuedBookCopyIds || [];
+    if (issued.length) return issued;
+    return loanLean.bookCopyIds || [];
+}
+
+/**
+ * Map loanTicketId → { title, bookCode, copyBarcodes } cho danh sách phiếu phạt.
+ */
+async function buildViolationBookByLoanId(loans) {
+    const bookIdSet = new Set();
+    const allCopyIdStrs = new Set();
+    for (const l of loans) {
+        if (l.bookId) bookIdSet.add(String(l.bookId));
+        for (const cid of copyIdsOnLoan(l)) {
+            if (cid && mongoose.isValidObjectId(cid)) allCopyIdStrs.add(String(cid));
+        }
+    }
+    const bookOids = [...bookIdSet]
+        .filter((id) => mongoose.isValidObjectId(id))
+        .map((id) => new mongoose.Types.ObjectId(id));
+    const books = bookOids.length
+        ? await BookMongo.find({ _id: { $in: bookOids } }).select('title nameProduct bookCode').lean()
+        : [];
+    const bookById = new Map(books.map((b) => [String(b._id), b]));
+
+    const copyOids = [...allCopyIdStrs]
+        .filter((id) => mongoose.isValidObjectId(id))
+        .map((id) => new mongoose.Types.ObjectId(id));
+    const copies = copyOids.length
+        ? await BookCopyMongo.find({ _id: { $in: copyOids } }).select('barcode').lean()
+        : [];
+    const copyById = new Map(copies.map((c) => [String(c._id), c]));
+
+    const out = new Map();
+    for (const l of loans) {
+        const bid = l.bookId ? String(l.bookId) : '';
+        const b = bid ? bookById.get(bid) : null;
+        const barcodes = [...new Set(
+            copyIdsOnLoan(l)
+                .map((id) => copyById.get(String(id))?.barcode)
+                .filter((x) => x != null && String(x).trim() !== ''),
+        )].map((x) => String(x).trim());
+        const title = b ? (b.title || b.nameProduct || '').trim() : '';
+        out.set(String(l._id), {
+            title: title || null,
+            bookCode: b?.bookCode ? String(b.bookCode).trim() : null,
+            copyBarcodes: barcodes,
+        });
+    }
+    return out;
+}
+
+function toClientFineRow(fine, userDoc, loanDoc, violationBook) {
     const f = fine.toObject ? fine.toObject() : { ...fine };
     const u = userDoc
         ? {
@@ -39,6 +97,9 @@ function toClientFineRow(fine, userDoc, loanDoc) {
               returnedAt: loanDoc.returnedAt,
           }
         : null;
+    const hasVio =
+        violationBook &&
+        (violationBook.title || violationBook.bookCode || (violationBook.copyBarcodes && violationBook.copyBarcodes.length));
     return {
         id: f.mysqlId || String(f._id),
         _id: String(f._id),
@@ -54,6 +115,7 @@ function toClientFineRow(fine, userDoc, loanDoc) {
         updatedAt: f.updatedAt,
         user: u,
         loanTicket: loan,
+        violationBook: hasVio ? violationBook : null,
     };
 }
 
@@ -133,10 +195,13 @@ class fineTicketController {
             : [];
         const loanById = new Map(loans.map((l) => [String(l._id), l]));
 
+        const violationByLoanId = await buildViolationBookByLoanId(loans);
+
         const data = list.map((doc) => {
             const userDoc = patronByKey.get(String(doc.userId)) || null;
             const loanDoc = doc.loanTicketId ? loanById.get(String(doc.loanTicketId)) || null : null;
-            return toClientFineRow(doc, userDoc, loanDoc);
+            const violationBook = loanDoc ? violationByLoanId.get(String(loanDoc._id)) || null : null;
+            return toClientFineRow(doc, userDoc, loanDoc, violationBook);
         });
         new OK({
             message: 'Lấy danh sách phiếu phạt thành công',
@@ -154,13 +219,28 @@ class fineTicketController {
         if (fine.status === 'PAID') {
             throw new BadRequestError('Phiếu phạt đã được thanh toán');
         }
+        const before = fine.toObject ? fine.toObject() : { ...fine };
         fine.status = 'PAID';
         await fine.save();
+        await logAdminAction({
+            req,
+            action: AuditActions.FINE_PAID,
+            targetId: String(fine._id),
+            targetType: 'FINE_TICKET',
+            oldValues: {
+                status: before.status,
+                fineAmount: before.fineAmount,
+                userId: String(before.userId),
+                loanTicketId: before.loanTicketId ? String(before.loanTicketId) : null,
+            },
+            newValues: { status: 'PAID' },
+        });
         const userDoc = await findUserByAnyId(fine.userId);
         const loanDoc = await LoanTicketMongo.findById(fine.loanTicketId).lean();
+        const violationBook = loanDoc ? (await buildViolationBookByLoanId([loanDoc])).get(String(loanDoc._id)) || null : null;
         new OK({
             message: 'Đã xác nhận thu tiền phạt',
-            metadata: toClientFineRow(fine, userDoc, loanDoc),
+            metadata: toClientFineRow(fine, userDoc, loanDoc, violationBook),
         }).send(res);
     }
 

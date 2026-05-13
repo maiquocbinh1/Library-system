@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const dns = require('dns');
 const AdminMongo = require('../models/admin.mongo.model');
+const AuditLogMongo = require('../models/auditLog.mongo.model');
 const UserMongo = require('../models/user.mongo.model');
 const { assignPatronCodeToUser, normalizeCode } = require('../utils/patronUser');
 
@@ -92,6 +93,16 @@ async function connectMongo() {
             }
         }
         await AdminMongo.syncIndexes();
+
+        try {
+            await AuditLogMongo.createCollection();
+        } catch (createErr) {
+            if (createErr?.code !== 48) {
+                throw createErr;
+            }
+        }
+        await AuditLogMongo.syncIndexes();
+
         console.log('[MongoDB] Kết nối Atlas thành công');
         return true;
     } catch (err) {

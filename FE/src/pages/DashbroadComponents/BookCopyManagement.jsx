@@ -363,7 +363,7 @@ const InventoryManagement = () => {
                     <Button onClick={() => setDetailOpen(false)}>Đóng</Button>
                 }
                 width={780}
-                destroyOnClose
+                destroyOnHidden
             >
                 <Table
                     rowKey={(r) => r._id || r.id}
@@ -393,7 +393,7 @@ const InventoryManagement = () => {
                 okText="Lưu thay đổi"
                 cancelText="Hủy"
                 confirmLoading={submitting}
-                destroyOnClose
+                destroyOnHidden
                 width={460}
             >
                 {editing && (

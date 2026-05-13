@@ -13,7 +13,12 @@ function bookCoverUrl(item) {
     return resolveBookCoverUrl(raw);
 }
 
-const BorrowingHistory = ({ loans = [], loading, onRefresh }) => {
+/** Chỉ phiếu đang mượn / quá hạn — cùng giao diện thẻ với lịch sử đầy đủ. */
+const CurrentBorrows = ({ loans = [], loading, onRefresh }) => {
+    const active = loans.filter((item) =>
+        ['BORROWING', 'OVERDUE', 'PENDING_APPROVAL'].includes(normalizeLoanStatusKey(item?.status)),
+    );
+
     const handleCancelBook = async (idHistory) => {
         try {
             await requestCancelBook({ idHistory });
@@ -36,18 +41,19 @@ const BorrowingHistory = ({ loans = [], loading, onRefresh }) => {
         <div className="space-y-4">
             <div>
                 <Title level={3} className="!mb-1 !text-slate-900">
-                    Lịch sử mượn sách
+                    Sách đang mượn
                 </Title>
-                <Text type="secondary">Tất cả phiếu mượn của bạn</Text>
+                <Text type="secondary">Phiếu đang lưu hành tại thư viện</Text>
             </div>
-            {loans.length > 0 ? (
+            {active.length > 0 ? (
                 <List
                     itemLayout="vertical"
-                    dataSource={loans}
+                    dataSource={active}
                     renderItem={(item) => {
                         const statusInfo = loanStatusMeta(item.status);
                         const due = item.returnDate && dayjs(item.returnDate).isValid() ? dayjs(item.returnDate) : null;
                         const borrowOk = item.borrowDate && dayjs(item.borrowDate).isValid();
+                        const isPending = isPendingApproval(item.status);
                         const showCountdown =
                             normalizeLoanStatusKey(item.status) === 'BORROWING' && due;
                         return (
@@ -73,20 +79,16 @@ const BorrowingHistory = ({ loans = [], loading, onRefresh }) => {
                                                         (Array.isArray(item.bookCopyIds) ? item.bookCopyIds.length : 0)}
                                                 </Text>
                                                 <Text type="secondary">
-                                                    Ngày gửi phiếu:{' '}
+                                                    Ngày mượn:{' '}
                                                     {borrowOk ? dayjs(item.borrowDate).format('DD/MM/YYYY') : '—'}
                                                 </Text>
                                                 <Text type="secondary">
                                                     Hạn trả:{' '}
-                                                    {isPendingApproval(item.status)
-                                                        ? 'Sau khi thư viện duyệt'
-                                                        : due
-                                                          ? due.format('DD/MM/YYYY')
-                                                          : '—'}
+                                                    {isPending ? 'Sau khi thư viện duyệt' : due ? due.format('DD/MM/YYYY') : '—'}
                                                 </Text>
                                                 {showCountdown && (
                                                     <p className="text-rose-600">
-                                                        Số ngày còn lại: {due.diff(dayjs(), 'day')} ngày
+                                                        Còn lại: {due.diff(dayjs(), 'day')} ngày
                                                     </p>
                                                 )}
                                             </Space>
@@ -108,7 +110,7 @@ const BorrowingHistory = ({ loans = [], loading, onRefresh }) => {
                                                 {statusInfo.text}
                                             </span>
                                             <Text type="secondary" className="text-xs">
-                                                Mã mượn: {String(item.id || '').substring(0, 8)}
+                                                Mã: {String(item.id || '').substring(0, 10)}
                                             </Text>
                                             {isPendingApproval(item.status) && (
                                                 <Button danger type="primary" onClick={() => handleCancelBook(item.id)}>
@@ -124,11 +126,11 @@ const BorrowingHistory = ({ loans = [], loading, onRefresh }) => {
                 />
             ) : (
                 <Card className="rounded-2xl border-dashed border-slate-200 bg-slate-50/80">
-                    <Empty description="Bạn chưa mượn cuốn sách nào." />
+                    <Empty description="Bạn không có sách đang mượn." />
                 </Card>
             )}
         </div>
     );
 };
 
-export default BorrowingHistory;
+export default CurrentBorrows;
