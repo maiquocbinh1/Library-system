@@ -7,6 +7,7 @@ const otpGenerator = require('otp-generator');
 const mongoose = require('mongoose');
 
 const { AuthFailureError, BadRequestError } = require('../core/error.response');
+const statusCodes = require('../core/statusCodes');
 const { OK } = require('../core/success.response');
 const UserMongo = require('../models/user.mongo.model');
 const ApiKeyMongo = require('../models/apiKey.mongo.model');
@@ -20,12 +21,51 @@ const {
     assignPatronCodeToUser,
 } = require('../utils/patronUser');
 const LoanTicketMongo = require('../models/loanTicket.mongo.model');
+const { mongoFilterPendingApproval } = require('../utils/loanTicketStatus');
 const FineTicketMongo = require('../models/fineTicket.mongo.model');
+const NotificationMongo = require('../models/notification.mongo.model');
 const sendMailForgotPassword = require('../utils/sendMailForgotPassword');
 const dayjs = require('dayjs');
 const { logAdminAction, AuditActions } = require('../utils/logAdminAction');
 
 require('dotenv').config();
+
+/** Thông báo nội bộ sau khi thư viện reset MK (để hiện ngay trên UI đăng nhập). */
+async function fetchPostLoginPasswordResetAlerts(user) {
+    if (!user?._id) return [];
+    const ids = [String(user._id)];
+    if (user.mysqlId) ids.push(String(user.mysqlId));
+    const list = await NotificationMongo.find({
+        userId: { $in: ids },
+        readAt: null,
+        /** Chỉ thông báo tạo khi thủ thư ResetPass (libraryMail.resolveForgotPassword) — không dùng meta.source để tránh nhầm bản ghi khác */
+        dedupeKey: { $regex: /^FORGOT_RESET:/ },
+    })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean();
+    return list.map((n) => ({
+        id: n.mysqlId || String(n._id),
+        title: n.title || 'Thông báo',
+        contentHtml: n.contentHtml || '',
+    }));
+}
+
+/** Sau đăng nhập thành công: không hiện lại banner — đánh dấu đã đọc thông báo reset (dedupe FORGOT_RESET). */
+async function markPasswordResetNotificationsRead(user) {
+    if (!user?._id) return;
+    const ids = [String(user._id)];
+    if (user.mysqlId) ids.push(String(user.mysqlId));
+    const now = new Date();
+    await NotificationMongo.updateMany(
+        {
+            userId: { $in: ids },
+            readAt: null,
+            dedupeKey: { $regex: /^FORGOT_RESET:/ },
+        },
+        { $set: { readAt: now } },
+    );
+}
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const COOKIE_SAME_SITE = IS_PRODUCTION ? 'Strict' : 'Lax';
@@ -271,6 +311,14 @@ class controllerUser {
 
         const isPasswordValid = bcrypt.compareSync(password, user.password || '');
         if (!isPasswordValid) {
+            const resetAlerts = await fetchPostLoginPasswordResetAlerts(user);
+            if (resetAlerts.length > 0) {
+                throw new AuthFailureError(
+                    'Mật khẩu không đúng. Thư viện đã đặt lại mật khẩu cho tài khoản của bạn — vui lòng đăng nhập bằng mật khẩu mặc định.',
+                    statusCodes.UNAUTHORIZED,
+                    { loginHint: 'LIBRARY_PASSWORD_RESET', postLoginAlerts: resetAlerts },
+                );
+            }
             throw new AuthFailureError('Tài khoản hoặc mật khẩu không chính xác');
         }
 
@@ -282,7 +330,11 @@ class controllerUser {
 
         setAuthCookies(res, token, refreshToken);
 
-        new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken, user: toSafeUser(user) } }).send(res);
+        await markPasswordResetNotificationsRead(user);
+        new OK({
+            message: 'Đăng nhập thành công',
+            metadata: { token, refreshToken, user: toSafeUser(user) },
+        }).send(res);
     }
 
     async authUser(req, res) {
@@ -376,7 +428,11 @@ class controllerUser {
 
         setAuthCookies(res, token, refreshToken);
 
-        new OK({ message: 'Đăng nhập thành công', metadata: { token, refreshToken, user: toSafeUser(user) } }).send(res);
+        await markPasswordResetNotificationsRead(user);
+        new OK({
+            message: 'Đăng nhập thành công',
+            metadata: { token, refreshToken, user: toSafeUser(user) },
+        }).send(res);
     }
 
     async forgotPassword(req, res) {
@@ -752,7 +808,7 @@ class controllerUser {
         try {
             const totalUsers = await UserMongo.countDocuments();
             const totalBooks = await BookMongo.countDocuments();
-            const pendingRequests = await LoanTicketMongo.countDocuments({ status: 'PENDING_APPROVAL' });
+            const pendingRequests = await LoanTicketMongo.countDocuments(mongoFilterPendingApproval());
 
             const distinctAvailableTitles = await BookCopyMongo.distinct('bookId', { status: 'AVAILABLE' });
             const booksInStock = distinctAvailableTitles.length;

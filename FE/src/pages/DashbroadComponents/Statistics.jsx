@@ -152,25 +152,33 @@ const Statistics = () => {
             setBooks([...normalized].sort(compareByBookCodeAsc));
         } finally { setBooksLoading(false); }
     };
-    const fetchPendingRequests = async () => {
+    const refreshPendingSection = useCallback(async () => {
         setPendingLoading(true);
         try {
-            const res = await requestGetAllHistoryBook();
-            const list = Array.isArray(res?.metadata) ? res.metadata : [];
+            const [statRes, histRes] = await Promise.all([
+                requestStatistics(),
+                requestGetAllHistoryBook(),
+            ]);
+            setData(statRes?.metadata ?? statRes ?? {});
+            const list = Array.isArray(histRes?.metadata) ? histRes.metadata : [];
             setPendingRequests(
-                list.map((item) => ({
-                    ...item,
-                    id: item?._id ? String(item._id) : item?.id,
-                    fullName: item?.fullName || '',
-                    productName: item?.product?.nameProduct || item?.nameProduct || '',
-                    quantity: Number(item?.quantity || 0),
-                    status: item?.status || '',
-                    borrowDate: item?.borrowDate || null,
-                    returnDate: item?.returnDate || null,
-                })).filter((x) => isPendingApproval(x?.status))
+                list
+                    .map((item) => ({
+                        ...item,
+                        id: item?._id ? String(item._id) : item?.id,
+                        fullName: item?.fullName || '',
+                        productName: item?.product?.nameProduct || item?.nameProduct || '',
+                        quantity: Number(item?.quantity || 0),
+                        status: item?.status || '',
+                        borrowDate: item?.borrowDate || null,
+                        returnDate: item?.returnDate || null,
+                    }))
+                    .filter((x) => isPendingApproval(x?.status)),
             );
-        } finally { setPendingLoading(false); }
-    };
+        } finally {
+            setPendingLoading(false);
+        }
+    }, []);
 
     // ── what-if ───────────────────────────────────────────────────────────────
     const runWhatIf = async () => {
@@ -352,7 +360,15 @@ const Statistics = () => {
                     </Card>
                 </Col>
                 <Col span={8}>
-                    <Card hoverable onClick={() => { setIsPendingModalOpen(true); if (!pendingRequests.length) fetchPendingRequests(); }} className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
+                    <Card
+                        hoverable
+                        onClick={() => {
+                            setIsPendingModalOpen(true);
+                            refreshPendingSection();
+                        }}
+                        className="rounded-2xl shadow-sm"
+                        bodyStyle={{ padding: 16 }}
+                    >
                         <Statistic title={<span className="text-slate-500">Yêu cầu chờ duyệt</span>} value={data?.pendingRequests || 0} prefix={<SolutionOutlined className="text-emerald-600" />} />
                     </Card>
                 </Col>

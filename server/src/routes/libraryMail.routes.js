@@ -18,6 +18,12 @@ router.get('/', authUser, libraryStaff, asyncHandler(libraryMailController.list)
 router.post('/forgot-password', asyncHandler(libraryMailController.createForgotPasswordRequest));
 
 /**
+ * Public: tin nhắn từ trang Liên hệ → ghi `library_mail` (nhật ký thư)
+ * POST /api/library-mail/contact-message
+ */
+router.post('/contact-message', asyncHandler(libraryMailController.createContactMessage));
+
+/**
  * Staff: resolve forgot password -> reset to 123 + notify user
  * POST /api/library-mail/resolve-forgot-password
  */

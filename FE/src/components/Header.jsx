@@ -1,6 +1,6 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useStore } from '../hooks/useStore';
-import { Badge, Dropdown, Avatar, Button, Drawer, Input, List, Typography, message } from 'antd';
+import { Badge, Dropdown, Avatar, Button, Drawer, Input, List, Typography, message, Tag } from 'antd';
 import { UserOutlined, LogoutOutlined, SearchOutlined, SafetyOutlined, BookOutlined, BellOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { requestGetMyNotifications, requestLogout, requestMarkAllNotificationsRead, requestMarkNotificationRead } from '../config/request';
@@ -316,6 +316,7 @@ function Header() {
                             : '';
                         const remindIndex = item?.__display?.remindIndex;
                         const titleSuffix = remindIndex ? ` (lần nhắc #${remindIndex})` : '';
+                        const isMassBroadcast = item?.type === 'SYSTEM' && item?.meta?.massBroadcast;
                         return (
                             <List.Item
                                 onClick={() => id && markRead(id)}
@@ -325,6 +326,11 @@ function Header() {
                                     title={
                                         <div className="flex items-start justify-between gap-2">
                                             <span className={isUnread ? 'font-semibold text-slate-900' : 'text-slate-800'}>
+                                                {isMassBroadcast ? (
+                                                    <Tag color="blue" className="mb-1 mr-1 align-middle">
+                                                        Toàn hệ thống
+                                                    </Tag>
+                                                ) : null}
                                                 {(item?.title || 'Thông báo')}{titleSuffix}
                                             </span>
                                             <span className="text-[11px] text-slate-400">{when}</span>

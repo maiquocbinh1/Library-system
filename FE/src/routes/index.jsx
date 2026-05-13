@@ -32,14 +32,7 @@ export const routes = [
         component: <RegisterUser />,
     },
     {
-        path: '/admin',
-        component: (
-            <AdminRoute>
-                <Admin />
-            </AdminRoute>
-        ),
-    },
-    {
+        /** Một route duy nhất: /admin và /admin/... cùng instance Admin (sidebar không remount khi đổi tab) */
         path: '/admin/*',
         component: (
             <AdminRoute>

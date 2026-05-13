@@ -9,7 +9,6 @@ import {
     DatabaseOutlined,
     DollarOutlined,
     DownOutlined,
-    FileSearchOutlined,
     LogoutOutlined,
     MailOutlined,
     PieChartOutlined,
@@ -34,7 +33,6 @@ import PolicyManagement from './DashbroadComponents/PolicyManagement';
 import EmailLogManagement from './DashbroadComponents/EmailLogManagement';
 import CirculationDesk from './DashbroadComponents/CirculationDesk';
 import CategoryManagement from './DashbroadComponents/CategoryManagement';
-import SystemAuditLog from './DashbroadComponents/SystemAuditLog';
 import PersonnelManagement from './DashbroadComponents/PersonnelManagement';
 import FinancialReport from './DashbroadComponents/FinancialReport';
 import { requestLogout } from '../config/request';
@@ -54,12 +52,22 @@ const VIEW_COMPONENTS = {
     'patron-profiles': <UserManagement />,
     'card-issue': <CardIssuanceManagement />,
     policy: <PolicyManagement />,
-    'audit-log': <SystemAuditLog />,
     'email-logs': <EmailLogManagement />,
     personnel: <PersonnelManagement />,
 };
 
 const ADMIN_VIEW_KEYS = new Set(Object.keys(VIEW_COMPONENTS));
+
+/** Submenu cha (Ant Menu `openKeys`) — chỉ một nhóm mở để sidebar không phải kéo dài */
+function getParentSubmenuKeyForLeaf(leafKey, isAdmin) {
+    if (leafKey === 'stats') return 'overview';
+    if (!isAdmin && leafKey === 'finance') return 'overview';
+    if (['borrow-return', 'fines'].includes(leafKey)) return 'circulation';
+    if (['book', 'book-copies', 'book-categories'].includes(leafKey)) return 'inventory';
+    if (['email-logs', 'patron-profiles', 'card-issue'].includes(leafKey)) return 'patrons';
+    if (isAdmin && ['personnel', 'policy', 'finance'].includes(leafKey)) return 'system';
+    return 'overview';
+}
 
 function adminPathForKey(key) {
     if (key === 'stats') return '/admin';
@@ -152,7 +160,6 @@ function buildMenuItems(isAdmin) {
             label: 'Hệ thống',
             children: [
                 { key: 'personnel', icon: <UsergroupAddOutlined />, label: 'Quản lý nhân sự' },
-                { key: 'audit-log', icon: <FileSearchOutlined />, label: 'Nhật ký hệ thống (Audit)' },
                 { key: 'policy', icon: <ControlOutlined />, label: 'Cấu hình chính sách' },
                 { key: 'finance', icon: <DollarOutlined />, label: 'Tài chính' },
             ],
@@ -164,18 +171,18 @@ function buildMenuItems(isAdmin) {
 
 function Admin() {
     const location = useLocation();
-    const [selectedKey, setSelectedKey] = useState(() => adminKeyFromPathname(window.location.pathname));
-    const [openKeys, setOpenKeys] = useState([
-        'overview',
-        'circulation',
-        'inventory',
-        'patrons',
-        'system',
-    ]);
+    const initialLeaf = adminKeyFromPathname(window.location.pathname);
+    const [selectedKey, setSelectedKey] = useState(() => initialLeaf);
+    const [openKeys, setOpenKeys] = useState(() => ['overview']);
     const navigate = useNavigate();
     const { dataUser, refreshAuth } = useStore();
 
     const isAdmin = String(dataUser?.role || '').toLowerCase() === 'admin';
+
+    const rootSubmenuKeys = useMemo(
+        () => (isAdmin ? ['overview', 'circulation', 'inventory', 'patrons', 'system'] : ['overview', 'circulation', 'inventory', 'patrons']),
+        [isAdmin],
+    );
 
     const menuItems = useMemo(() => buildMenuItems(isAdmin), [isAdmin]);
 
@@ -189,16 +196,10 @@ function Admin() {
                 return;
             }
         }
-        setSelectedKey(adminKeyFromPathname(location.pathname));
-    }, [location.pathname, navigate]);
-
-    useEffect(() => {
-        setOpenKeys(
-            isAdmin
-                ? ['overview', 'circulation', 'inventory', 'patrons', 'system']
-                : ['overview', 'circulation', 'inventory', 'patrons'],
-        );
-    }, [isAdmin]);
+        const leaf = adminKeyFromPathname(location.pathname);
+        setSelectedKey(leaf);
+        setOpenKeys([getParentSubmenuKeyForLeaf(leaf, isAdmin)]);
+    }, [location.pathname, navigate, isAdmin]);
 
     const currentTabTitle = useMemo(() => {
         return findMenuLabel(menuItems, selectedKey) || 'Dashboard';
@@ -274,10 +275,19 @@ function Admin() {
                     items={menuItems}
                     selectedKeys={[selectedKey]}
                     openKeys={openKeys}
-                    onOpenChange={setOpenKeys}
+                    onOpenChange={(keys) => {
+                        const subs = keys.filter((k) => rootSubmenuKeys.includes(k));
+                        if (subs.length <= 1) {
+                            setOpenKeys(subs.length ? subs : [getParentSubmenuKeyForLeaf(selectedKey, isAdmin)]);
+                            return;
+                        }
+                        const newlyOpened = subs.find((k) => !openKeys.includes(k));
+                        setOpenKeys(newlyOpened ? [newlyOpened] : [subs[subs.length - 1]]);
+                    }}
                     onClick={({ key }) => {
                         if (Object.prototype.hasOwnProperty.call(VIEW_COMPONENTS, key)) {
                             setSelectedKey(key);
+                            setOpenKeys([getParentSubmenuKeyForLeaf(key, isAdmin)]);
                             navigate(adminPathForKey(key), { replace: false });
                         }
                     }}

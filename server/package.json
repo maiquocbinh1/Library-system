@@ -11,6 +11,7 @@
         "seed:personnel-audit": "node src/scripts/seedPersonnelAndAudit.js",
         "seed:book-prices": "node src/scripts/seedBookImportPrices.js",
         "seed:library-mail": "node src/scripts/seedLibraryMailDemo.js",
+        "seed:library-mail-forgot-users": "node src/scripts/seedLibraryMailForgotDemoUsers.js",
         "seed:test-student": "node src/scripts/seedTestStudent.js",
         "seed:demo-borrow": "node src/scripts/seedDemoBorrowFlows.js",
         "seed:policies": "node src/scripts/seedPolicies.js",

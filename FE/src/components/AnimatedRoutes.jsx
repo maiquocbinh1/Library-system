@@ -16,16 +16,25 @@ const transition = {
 
 export default function AnimatedRoutes() {
     const location = useLocation();
+    /** Đổi URL trong /admin/* không remount toàn bộ Routes → sidebar giữ nguyên, chỉ nội dung Admin đổi */
+    const routesPresenceKey = location.pathname.startsWith('/admin') ? '__admin__' : location.pathname;
 
     return (
         <AnimatePresence mode="wait" initial={false}>
-            <Routes location={location} key={location.pathname}>
-                {routes.map((route, index) => (
+            <Routes location={location} key={routesPresenceKey}>
+                {routes.map((route) => (
                     <Route
-                        key={index}
+                        key={route.path}
                         path={route.path}
                         element={
-                            <motion.div variants={variants} initial="initial" animate="animate" exit="exit" transition={transition}>
+                            <motion.div
+                                key={routesPresenceKey}
+                                variants={variants}
+                                initial="initial"
+                                animate="animate"
+                                exit="exit"
+                                transition={transition}
+                            >
                                 {route.component}
                             </motion.div>
                         }

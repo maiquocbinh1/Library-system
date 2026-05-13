@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Card, Table, Tag, Select, DatePicker, Button, Input, message, Typography, Row, Col, Statistic } from 'antd';
+import { Card, Table, Tag, Select, DatePicker, Button, Input, message, Typography, Row, Col, Statistic, Modal, Space } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, MailOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { requestGetLibraryMail, requestResolveForgotPasswordMail } from '../../config/request';
@@ -19,13 +19,28 @@ const STATUS_OPTIONS = [
     { value: 'RESOLVED', label: 'Đã xử lý' },
 ];
 
-const typeLabel = (type) => {
-    switch (type) {
-        case 'FORGOT_PASSWORD': return <Tag color="volcano">Quên mật khẩu</Tag>;
-        case 'SYSTEM': return <Tag color="blue">Toàn hệ thống</Tag>;
-        case 'BORROW_CONFIRM': return <Tag color="green">Xác nhận mượn</Tag>;
-        default: return <Tag>{type || 'Khác'}</Tag>;
+/** Toàn trường: meta mới `mass_broadcast`, hoặc bản ghi cũ (trước khi đổi code) vẫn lưu `in_app_staff_notification` + `channel: send_mass`. */
+function isMassBroadcastMailRow(row) {
+    if (row?.type !== 'SYSTEM') return false;
+    if (row?.meta?.source === 'mass_broadcast') return true;
+    return (
+        row?.meta?.source === 'in_app_staff_notification' &&
+        row?.meta?.channel === 'send_mass'
+    );
+}
+
+const typeLabel = (row) => {
+    const t = row?.type;
+    if (t === 'FORGOT_PASSWORD') return <Tag color="volcano">Quên mật khẩu</Tag>;
+    if (t === 'SYSTEM' && row?.meta?.source === 'contact_form') {
+        return <Tag color="cyan">Tin liên hệ</Tag>;
     }
+    if (t === 'SYSTEM' && row?.meta?.source === 'in_app_staff_notification' && !isMassBroadcastMailRow(row)) {
+        return <Tag color="geekblue">Thông báo nội bộ</Tag>;
+    }
+    if (t === 'SYSTEM') return <Tag color="blue">Toàn hệ thống</Tag>;
+    if (t === 'BORROW_CONFIRM') return <Tag color="green">Xác nhận mượn</Tag>;
+    return <Tag>{t || 'Khác'}</Tag>;
 };
 
 const deliveryLabel = (ds) => {
@@ -46,6 +61,15 @@ const EmailLogManagement = () => {
     const [dateRange, setDateRange] = useState(null);
     const [searchText, setSearchText] = useState('');
     const [resolvingId, setResolvingId] = useState(null);
+    const [preview, setPreview] = useState({ open: false, title: '', html: '' });
+
+    const openPreview = (row) => {
+        setPreview({
+            open: true,
+            title: row?.title || 'Nội dung thư',
+            html: row?.contentHtml || '',
+        });
+    };
 
     const fetchLogs = useCallback(async () => {
         setLoading(true);
@@ -77,6 +101,12 @@ const EmailLogManagement = () => {
                     totalRecipients: Number(meta.stats?.totalRecipients) || 0,
                 };
             }
+            const ts = (x) => new Date(x.createdAt || 0).getTime();
+            items = [...items].sort((a, b) => {
+                const d = ts(b) - ts(a);
+                if (d !== 0) return d;
+                return String(b._id || b.id || '').localeCompare(String(a._id || a.id || ''));
+            });
             setLogs(items);
             setStats(nextStats);
         } catch {
@@ -88,11 +118,20 @@ const EmailLogManagement = () => {
 
     useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
-    const filteredLogs = useMemo(() => logs.filter((log) => {
-        if (!dateRange || !dateRange[0] || !dateRange[1]) return true;
-        const created = dayjs(log.createdAt);
-        return created.isAfter(dateRange[0].startOf('day')) && created.isBefore(dateRange[1].endOf('day'));
-    }), [logs, dateRange]);
+    const filteredLogs = useMemo(() => {
+        const filtered = logs.filter((log) => {
+            if (!dateRange || !dateRange[0] || !dateRange[1]) return true;
+            const created = dayjs(log.createdAt);
+            return created.isAfter(dateRange[0].startOf('day')) && created.isBefore(dateRange[1].endOf('day'));
+        });
+        const ts = (x) => new Date(x.createdAt || 0).getTime();
+        filtered.sort((a, b) => {
+            const d = ts(b) - ts(a);
+            if (d !== 0) return d;
+            return String(b._id || b.id || '').localeCompare(String(a._id || a.id || ''));
+        });
+        return filtered;
+    }, [logs, dateRange]);
 
     const handleResolveForgot = async (row) => {
         try {
@@ -124,15 +163,12 @@ const EmailLogManagement = () => {
             key: 'createdAt',
             width: 170,
             render: (v) => (v ? dayjs(v).format('HH:mm - DD/MM/YYYY') : '—'),
-            sorter: (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
-            defaultSortOrder: 'descend',
         },
         {
             title: 'Loại thư',
-            dataIndex: 'type',
             key: 'type',
-            width: 180,
-            render: typeLabel,
+            width: 190,
+            render: (_, row) => typeLabel(row),
         },
         {
             title: 'Kết quả gửi',
@@ -140,14 +176,6 @@ const EmailLogManagement = () => {
             key: 'deliveryStatus',
             width: 150,
             render: (v, row) => deliveryLabel(v || (row.type === 'FORGOT_PASSWORD' && row.status === 'PENDING' ? 'pending' : 'success')),
-        },
-        {
-            title: 'Người nhận (số)',
-            dataIndex: 'recipientCount',
-            key: 'recipientCount',
-            width: 120,
-            align: 'right',
-            render: (n) => <span className="tabular-nums">{n != null ? Number(n) : 1}</span>,
         },
         {
             title: 'Người gửi / Độc giả',
@@ -170,31 +198,38 @@ const EmailLogManagement = () => {
             ellipsis: true,
         },
         {
-            title: 'Xử lý quên MK',
-            dataIndex: 'status',
-            key: 'status',
-            width: 130,
-            render: (v, row) => {
-                if (row.type !== 'FORGOT_PASSWORD') return <Tag color="default">—</Tag>;
-                return <Tag color={v === 'RESOLVED' ? 'success' : 'warning'}>{v === 'RESOLVED' ? 'Đã xử lý' : 'Chờ xử lý'}</Tag>;
-            },
-        },
-        {
             title: 'Thao tác',
             key: 'actions',
-            width: 160,
+            width: 200,
+            fixed: 'right',
             render: (_, row) => {
-                if (row.type !== 'FORGOT_PASSWORD') return '—';
-                const disabled = String(row.status) === 'RESOLVED';
+                const rowKey = row.id || row._id;
+                if (row.type === 'FORGOT_PASSWORD') {
+                    const resolved = String(row.status) === 'RESOLVED';
+                    if (resolved) {
+                        return (
+                            <Button size="small" type="default" onClick={() => openPreview(row)}>
+                                Xem nội dung
+                            </Button>
+                        );
+                    }
+                    return (
+                        <Space size="small" wrap>
+                            <Tag color="warning">Chờ xử lý</Tag>
+                            <Button
+                                size="small"
+                                type="primary"
+                                loading={resolvingId === rowKey}
+                                onClick={() => handleResolveForgot(row)}
+                            >
+                                ResetPass (123)
+                            </Button>
+                        </Space>
+                    );
+                }
                 return (
-                    <Button
-                        size="small"
-                        type="primary"
-                        disabled={disabled}
-                        loading={resolvingId === (row.id || row._id)}
-                        onClick={() => handleResolveForgot(row)}
-                    >
-                        ResetPass (123)
+                    <Button size="small" type="default" onClick={() => openPreview(row)}>
+                        Xem nội dung
                     </Button>
                 );
             },
@@ -318,10 +353,24 @@ const EmailLogManagement = () => {
                     loading={loading}
                     pagination={{ pageSize: 15, showSizeChanger: true, showTotal: (t) => `Tổng ${t} bản ghi` }}
                     size="small"
-                    scroll={{ x: 1100 }}
+                    scroll={{ x: 1050 }}
                     locale={{ emptyText: 'Chưa có nhật ký thư nào' }}
                 />
             </Card>
+
+            <Modal
+                title={preview.title}
+                open={preview.open}
+                onCancel={() => setPreview((p) => ({ ...p, open: false }))}
+                footer={<Button type="primary" onClick={() => setPreview((p) => ({ ...p, open: false }))}>Đóng</Button>}
+                width={640}
+                destroyOnClose
+            >
+                <div
+                    className="max-h-[60vh] overflow-y-auto text-sm leading-relaxed text-slate-800 [&_p]:mb-2"
+                    dangerouslySetInnerHTML={{ __html: preview.html || '<p class="text-slate-400">(Không có nội dung)</p>' }}
+                />
+            </Modal>
         </div>
     );
 };

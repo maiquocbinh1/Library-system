@@ -38,6 +38,18 @@ function toClientMail(doc) {
     };
 }
 
+/** Chỉ dùng _id trong query khi đúng định dạng ObjectId — tránh CastError khi mailId là mysqlId CSV (vd: import-csv-018). */
+function isMongoObjectIdString(v) {
+    return typeof v === 'string' && /^[a-fA-F0-9]{24}$/.test(v);
+}
+
+function mailLookupFilter(mailId) {
+    const s = String(mailId || '').trim();
+    if (!s) return { _id: null };
+    if (isMongoObjectIdString(s)) return { $or: [{ _id: s }, { mysqlId: s }] };
+    return { mysqlId: s };
+}
+
 function buildLibraryMailFilter({ type, status, q }) {
     const filter = {};
     if (type && type !== 'all') filter.type = type;
@@ -115,7 +127,7 @@ class LibraryMailController {
         }
 
         const [rows, statsAgg] = await Promise.all([
-            LibraryMailMongo.find(listFilter).sort({ createdAt: -1 }).limit(limit).lean(),
+            LibraryMailMongo.find(listFilter).sort({ createdAt: -1, _id: -1 }).limit(limit).lean(),
             LibraryMailMongo.aggregate(statsAggregatePipeline(baseFilter)),
         ]);
 
@@ -183,6 +195,61 @@ class LibraryMailController {
     }
 
     /**
+     * Public: tin nhắn từ trang Liên hệ — lưu vào `library_mail` để thủ thư xem ở Nhật ký thư.
+     * Body: { fullName, email, subject, content }
+     */
+    async createContactMessage(req, res) {
+        const { fullName, email, subject, content } = req.body || {};
+        const name = String(fullName || '').trim();
+        const emailLc = String(email || '').trim().toLowerCase();
+        const sub = String(subject || '').trim();
+        const body = String(content || '').trim();
+
+        if (!name) throw new BadRequestError('Vui lòng nhập họ và tên');
+        if (!emailLc) throw new BadRequestError('Vui lòng nhập email');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLc)) throw new BadRequestError('Email không hợp lệ');
+        if (!sub) throw new BadRequestError('Vui lòng nhập tiêu đề');
+        if (!body) throw new BadRequestError('Vui lòng nhập nội dung');
+        if (sub.length > 300) throw new BadRequestError('Tiêu đề quá dài');
+        if (body.length > 8000) throw new BadRequestError('Nội dung quá dài');
+        if (name.length > 200) throw new BadRequestError('Họ tên quá dài');
+
+        const esc = (s) =>
+            String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+
+        const contentHtml = `
+            <div style="font-family:Arial,sans-serif">
+              <p><b>Tin nhắn từ trang Liên hệ</b></p>
+              <p><b>Họ và tên:</b> ${esc(name)}</p>
+              <p><b>Email:</b> ${esc(emailLc)}</p>
+              <p><b>Tiêu đề:</b> ${esc(sub)}</p>
+              <p><b>Nội dung:</b></p>
+              <div style="white-space:pre-wrap;border-left:3px solid #e2e8f0;padding-left:12px;margin-top:8px">${esc(body)}</div>
+            </div>
+        `.trim();
+
+        const doc = await LibraryMailMongo.create({
+            mysqlId: randomId(),
+            type: 'SYSTEM',
+            title: sub.slice(0, 300),
+            contentHtml,
+            senderEmail: emailLc,
+            senderName: name.slice(0, 200),
+            senderStudentId: '',
+            status: 'PENDING',
+            deliveryStatus: 'success',
+            recipientCount: 1,
+            meta: { source: 'contact_form' },
+        });
+
+        new Created({ message: 'Đã gửi tin nhắn. Cảm ơn bạn đã liên hệ!', metadata: toClientMail(doc) }).send(res);
+    }
+
+    /**
      * Staff: duyệt yêu cầu quên mật khẩu -> reset về 123 + tạo notification cho user
      * Body: { mailId }
      */
@@ -190,7 +257,7 @@ class LibraryMailController {
         const { mailId } = req.body || {};
         if (!mailId) throw new BadRequestError('Thiếu mailId');
 
-        const mail = await LibraryMailMongo.findOne({ $or: [{ _id: mailId }, { mysqlId: mailId }] });
+        const mail = await LibraryMailMongo.findOne(mailLookupFilter(mailId));
         if (!mail) throw new BadRequestError('Không tìm thấy yêu cầu');
         if (mail.type !== 'FORGOT_PASSWORD') throw new BadRequestError('Không đúng loại yêu cầu');
         if (mail.status === 'RESOLVED') {

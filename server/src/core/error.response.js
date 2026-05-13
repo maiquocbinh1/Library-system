@@ -24,8 +24,10 @@ class BadRequestError extends ErrorResponse {
 }
 
 class AuthFailureError extends ErrorResponse {
-    constructor(message = reasonPhrases.UNAUTHORIZED, statusCode = statusCodes.UNAUTHORIZED) {
+    /** @param {Record<string, unknown>} [metadata] — gửi kèm JSON lỗi (vd: loginHint + postLoginAlerts). */
+    constructor(message = reasonPhrases.UNAUTHORIZED, statusCode = statusCodes.UNAUTHORIZED, metadata) {
         super(message, statusCode);
+        if (metadata != null && typeof metadata === 'object') this.metadata = metadata;
     }
 }
 

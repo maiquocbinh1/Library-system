@@ -42,10 +42,14 @@ async function bootstrap() {
 
     app.use((err, req, res, next) => {
         const statusCode = err.statusCode || 500;
-        res.status(statusCode).json({
+        const body = {
             success: false,
             message: err.message || 'Lỗi server',
-        });
+        };
+        if (err.metadata != null && typeof err.metadata === 'object') {
+            body.metadata = err.metadata;
+        }
+        res.status(statusCode).json(body);
     });
 
     app.listen(port, () => {

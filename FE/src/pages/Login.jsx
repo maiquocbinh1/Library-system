@@ -7,6 +7,49 @@ import { requestLogin } from '../config/request';
 import imagesLogin from '../assets/images/login-library.png';
 import { useStore } from '../hooks/useStore';
 
+const NOTICE_WRONG_PASSWORD = 'library-wrong-pw-reset';
+
+/** Thông báo ban đầu khi sai MK nhưng thư viện đã reset (cùng vị trí với message.error). */
+function openLibraryWrongPasswordResetHint(postLoginAlerts, onDismiss) {
+    const single = postLoginAlerts.length === 1 ? postLoginAlerts[0] : null;
+
+    message.open({
+        key: NOTICE_WRONG_PASSWORD,
+        type: 'info',
+        duration: 0,
+        content: (
+            <div style={{ maxWidth: 420 }} className="text-left text-slate-800">
+                <p className="mb-1 text-sm font-semibold text-slate-900">
+                    {single?.title || 'Thông báo từ thư viện'}
+                </p>
+                <p className="mb-2 text-xs leading-snug text-slate-600">
+                    Mật khẩu bạn nhập chưa đúng. Thư viện đã đặt lại mật khẩu cho tài khoản này — vui lòng đọc và thử đăng nhập lại bằng mật khẩu mặc định.
+                </p>
+                <div
+                    className="mb-3 max-h-[40vh] overflow-y-auto text-xs leading-relaxed [&_p]:mb-1"
+                    style={{ wordBreak: 'break-word' }}
+                >
+                    {postLoginAlerts.map((a) => (
+                        <div
+                            key={a.id}
+                            className="mb-2 border-b border-slate-200/80 pb-2 last:mb-0 last:border-b-0 last:pb-0"
+                        >
+                            {!single && <div className="mb-1 font-semibold text-slate-900">{a.title}</div>}
+                            <div
+                                className="login-post-alert-html text-slate-700"
+                                dangerouslySetInnerHTML={{ __html: a.contentHtml || '' }}
+                            />
+                        </div>
+                    ))}
+                </div>
+                <Button type="primary" size="small" onClick={() => void onDismiss()}>
+                    Đã hiểu
+                </Button>
+            </div>
+        ),
+    });
+}
+
 function LoginUser() {
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
@@ -16,13 +59,27 @@ function LoginUser() {
 
         try {
             const res = await requestLogin(values);
-            const role = String(res?.data?.metadata?.user?.role || '').toLowerCase();
+            const meta = res?.data?.metadata;
+            const role = String(meta?.user?.role || '').toLowerCase();
+            const target = role === 'admin' || role === 'librarian' ? '/admin' : '/';
+
             await refreshAuth();
             message.success('Đăng nhập thành công!');
-            navigate(role === 'admin' || role === 'librarian' ? '/admin' : '/');
+            navigate(target);
         } catch (error) {
-            const errorMessage = error?.response?.data?.message || 'Tài khoản hoặc mật khẩu không chính xác';
-            message.error(errorMessage);
+            const data = error?.response?.data;
+            const errMeta = data?.metadata;
+            if (
+                errMeta?.loginHint === 'LIBRARY_PASSWORD_RESET' &&
+                Array.isArray(errMeta.postLoginAlerts) &&
+                errMeta.postLoginAlerts.length > 0
+            ) {
+                openLibraryWrongPasswordResetHint(errMeta.postLoginAlerts, () => {
+                    message.destroy(NOTICE_WRONG_PASSWORD);
+                });
+            } else {
+                message.error(data?.message || 'Tài khoản hoặc mật khẩu không chính xác');
+            }
         } finally {
             setLoading(false);
         }

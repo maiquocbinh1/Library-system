@@ -6,6 +6,7 @@ const LoanTicketMongo = require('../models/loanTicket.mongo.model');
 
 const { BadRequestError } = require('../core/error.response');
 const { OK, Created } = require('../core/success.response');
+const { tryLogStaffNotificationMail } = require('../services/libraryMailLog.service');
 
 function random36() {
     return crypto.randomUUID();
@@ -24,6 +25,18 @@ function userIdCandidates(user) {
     const ids = [String(user._id)];
     if (user.mysqlId) ids.push(String(user.mysqlId));
     return ids;
+}
+
+function isMongoObjectIdString(v) {
+    return typeof v === 'string' && /^[a-fA-F0-9]{24}$/.test(v);
+}
+
+/** Tránh CastError khi client gửi mysqlId (UUID) thay vì _id. */
+function notificationIdFilter(notificationId) {
+    const s = String(notificationId || '').trim();
+    if (!s) return { _id: null };
+    if (isMongoObjectIdString(s)) return { $or: [{ _id: s }, { mysqlId: s }] };
+    return { mysqlId: s };
 }
 
 function toClientNotification(doc) {
@@ -68,7 +81,7 @@ class NotificationController {
 
         const now = new Date();
         await NotificationMongo.updateOne(
-            { $or: [{ _id: notificationId }, { mysqlId: notificationId }], userId: { $in: ids } },
+            { ...notificationIdFilter(notificationId), userId: { $in: ids } },
             { $set: { readAt: now } },
         );
         new OK({ message: 'OK', metadata: { readAt: now } }).send(res);
@@ -101,6 +114,14 @@ class NotificationController {
             meta: meta || null,
             dedupeKey: String(dedupeKey || '').trim(),
         });
+        await tryLogStaffNotificationMail(req, {
+            mailMetaSource: 'in_app_staff_notification',
+            title: String(title || 'Thông báo từ thư viện').trim(),
+            contentHtml: String(contentHtml || '').trim(),
+            recipientCount: 1,
+            recipientUserId: String(u._id),
+            metaExtras: { channel: 'send_warning', notificationMysqlId: doc.mysqlId },
+        });
         new Created({ message: 'Đã gửi thông báo', metadata: toClientNotification(doc) }).send(res);
     }
 
@@ -112,6 +133,7 @@ class NotificationController {
         const html = String(contentHtml || '').trim();
 
         const createdAt = new Date();
+        const batchId = random36();
         const ops = [];
         for (const uid of userIds) {
             const u = await findUserByAnyId(uid);
@@ -124,7 +146,7 @@ class NotificationController {
                         type: 'SYSTEM',
                         title: t,
                         contentHtml: html,
-                        meta: null,
+                        meta: { massBroadcast: true, batchId },
                         dedupeKey: '',
                         readAt: null,
                         createdAt,
@@ -135,6 +157,13 @@ class NotificationController {
         }
         if (!ops.length) throw new BadRequestError('Không có user hợp lệ');
         await NotificationMongo.bulkWrite(ops, { ordered: false });
+        await tryLogStaffNotificationMail(req, {
+            mailMetaSource: 'mass_broadcast',
+            title: t,
+            contentHtml: html,
+            recipientCount: ops.length,
+            metaExtras: { channel: 'send_mass', notificationCount: ops.length, batchId },
+        });
         new OK({ message: `Đã gửi ${ops.length} thông báo` }).send(res);
     }
 }

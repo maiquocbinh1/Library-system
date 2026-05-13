@@ -510,6 +510,12 @@ export const requestSendForgotPasswordMail = async (data) => {
     return res.data;
 };
 
+/** Public: tin nhắn trang Liên hệ -> nhật ký thư */
+export const requestSendContactMessage = async (data) => {
+    const res = await apiClient.post(`${apiLibraryMail}/contact-message`, data);
+    return res.data;
+};
+
 /** Staff: duyệt yêu cầu quên mật khẩu -> reset 123 + notify */
 export const requestResolveForgotPasswordMail = async (mailId) => {
     const res = await apiClient.post(`${apiLibraryMail}/resolve-forgot-password`, { mailId });

@@ -1,16 +1,31 @@
+import { useState } from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { Button, Card, Form, Input, message } from 'antd';
+import { requestSendContactMessage } from '../config/request';
 
 const { TextArea } = Input;
 
 function Contact() {
     const [form] = Form.useForm();
+    const [submitting, setSubmitting] = useState(false);
 
-    const handleSubmit = (values) => {
-        console.log('Contact form data:', values);
-        message.success('Gửi tin nhắn thành công!');
-        form.resetFields();
+    const handleSubmit = async (values) => {
+        setSubmitting(true);
+        try {
+            await requestSendContactMessage({
+                fullName: values.fullName,
+                email: values.email,
+                subject: values.subject,
+                content: values.content,
+            });
+            message.success('Gửi tin nhắn thành công! Thư viện sẽ xem xét tin của bạn.');
+            form.resetFields();
+        } catch (e) {
+            message.error(e?.response?.data?.message || 'Không gửi được tin nhắn. Vui lòng thử lại sau.');
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -72,7 +87,12 @@ function Contact() {
                                 </Form.Item>
 
                                 <Form.Item className="mb-0">
-                                    <Button type="primary" htmlType="submit" className="bg-blue-600 hover:!bg-blue-700">
+                                    <Button
+                                        type="primary"
+                                        htmlType="submit"
+                                        loading={submitting}
+                                        className="bg-blue-600 hover:!bg-blue-700"
+                                    >
                                         Gửi tin nhắn
                                     </Button>
                                 </Form.Item>

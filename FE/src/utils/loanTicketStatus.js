@@ -11,6 +11,9 @@ export function normalizeLoanStatusKey(status) {
     const s = String(status).trim();
     const lower = s.toLowerCase();
     if (LEGACY[lower]) return LEGACY[lower];
+    const deaccent = (x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const folded = deaccent(lower).replace(/\s+/g, ' ').trim();
+    if (folded === 'cho duyet') return 'PENDING_APPROVAL';
     return s.replace(/\s+/g, '_').toUpperCase();
 }
 
