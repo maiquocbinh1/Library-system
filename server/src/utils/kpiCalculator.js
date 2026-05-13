@@ -3,6 +3,14 @@ const BookCopyMongo = require('../models/bookCopy.mongo.model');
 const FineTicketMongo = require('../models/fineTicket.mongo.model');
 const UserMongo = require('../models/user.mongo.model');
 const BookMongo = require('../models/book.mongo.model');
+function calendarDaysLate(dueDate, at) {
+    const d0 = new Date(dueDate);
+    const d1 = new Date(at);
+    if (Number.isNaN(d0.getTime()) || Number.isNaN(d1.getTime())) return 0;
+    d0.setHours(0, 0, 0, 0);
+    d1.setHours(0, 0, 0, 0);
+    return Math.max(0, Math.floor((d1.getTime() - d0.getTime()) / 86400000));
+}
 
 /**
  * KPI 1: Tỷ lệ khai thác kho sách
@@ -219,9 +227,21 @@ async function getWhatIfAnalysis(maxDays, fineRate, period = 'all') {
  * DSS: Độc giả rủi ro cao
  */
 async function getHighRiskUsers() {
+    const now = new Date();
     const overdueUsers = await LoanTicketMongo.aggregate([
-        { $match: { status: 'OVERDUE' } },
-        { $group: { _id: '$userId', overdueBooksCount: { $sum: 1 } } },
+        {
+            $match: {
+                status: { $in: ['BORROWING', 'OVERDUE'] },
+                dueDate: { $ne: null, $lt: now },
+            },
+        },
+        {
+            $group: {
+                _id: '$userId',
+                overdueBooksCount: { $sum: 1 },
+                earliestDueDate: { $min: '$dueDate' },
+            },
+        },
     ]);
 
     const unpaidFines = await FineTicketMongo.aggregate([
@@ -234,6 +254,7 @@ async function getHighRiskUsers() {
         const uid = String(u._id);
         if (!riskMap[uid]) riskMap[uid] = { overdueBooksCount: 0, totalFine: 0 };
         riskMap[uid].overdueBooksCount = u.overdueBooksCount;
+        riskMap[uid].earliestDueDate = u.earliestDueDate || null;
     }
     for (const f of unpaidFines) {
         const uid = String(f._id);
@@ -245,8 +266,12 @@ async function getHighRiskUsers() {
     if (!riskUserIds.length) return [];
 
     const users = await UserMongo.find({ _id: { $in: riskUserIds } }).lean();
+
     return users.map((u) => {
         const uid = String(u._id);
+        const earliestDue = riskMap[uid]?.earliestDueDate || null;
+        // Mỗi ngày nhắc 1 lần kể từ khi quá hạn: số lần nhắc = số ngày trễ (>=1 nếu đã quá hạn)
+        const warningCount = earliestDue ? calendarDaysLate(earliestDue, now) : 0;
         return {
             id: uid,
             studentId: u.studentId || u.idStudent || '',
@@ -254,7 +279,7 @@ async function getHighRiskUsers() {
             email: u.email,
             totalFine: riskMap[uid]?.totalFine || 0,
             overdueBooksCount: riskMap[uid]?.overdueBooksCount || 0,
-            warningCount: u.warningCount || 0,
+            warningCount,
         };
     }).sort((a, b) => b.totalFine - a.totalFine);
 }

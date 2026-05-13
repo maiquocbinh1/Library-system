@@ -95,6 +95,39 @@ export const requestChangeOwnPassword = async (data) => {
     return res.data;
 };
 
+// ─── Notifications (in-app) ──────────────────────────────────────────────────
+const apiNotifications = '/api/notifications';
+
+export const requestGetMyNotifications = async (params = {}) => {
+    const sp = new URLSearchParams();
+    if (params.limit != null) sp.set('limit', String(params.limit));
+    const q = sp.toString();
+    const res = await apiClient.get(`${apiNotifications}/my${q ? `?${q}` : ''}`);
+    return res.data;
+};
+
+export const requestMarkNotificationRead = async (notificationId) => {
+    const res = await apiClient.post(`${apiNotifications}/mark-read`, { notificationId });
+    return res.data;
+};
+
+export const requestMarkAllNotificationsRead = async () => {
+    const res = await apiClient.post(`${apiNotifications}/mark-all-read`);
+    return res.data;
+};
+
+/** Staff: gửi cảnh báo nội bộ cho 1 user */
+export const requestSendWarningNotification = async (data) => {
+    const res = await apiClient.post(`${apiNotifications}/send-warning`, data);
+    return res.data;
+};
+
+/** Staff: gửi thông báo hàng loạt */
+export const requestSendMassNotification = async (data) => {
+    const res = await apiClient.post(`${apiNotifications}/send-mass`, data);
+    return res.data;
+};
+
 export const requestGetRequestLoan = async () => {
     const res = await apiClient.get(`${apiUser}/get-request-loan`);
     return res.data;
@@ -452,5 +485,33 @@ export const requestSendMassEmail = async (data) => {
 
 export const requestGetEmailLogs = async (type = 'all') => {
     const res = await apiClient.get(`${apiOas}/email-logs?type=${type}`);
+    return res.data;
+};
+
+// ─── Library Mail (Mongo: `library_mail`) ─────────────────────────────────────
+const apiLibraryMail = '/api/library-mail';
+
+/** Staff: Nhật ký thư */
+export const requestGetLibraryMail = async (params = {}) => {
+    const sp = new URLSearchParams();
+    if (params.type) sp.set('type', String(params.type));
+    if (params.status) sp.set('status', String(params.status));
+    if (params.deliveryStatus) sp.set('deliveryStatus', String(params.deliveryStatus));
+    if (params.q) sp.set('q', String(params.q));
+    if (params.limit != null) sp.set('limit', String(params.limit));
+    const q = sp.toString();
+    const res = await apiClient.get(`${apiLibraryMail}${q ? `?${q}` : ''}`);
+    return res.data;
+};
+
+/** Public: gửi yêu cầu quên mật khẩu (để thư viện reset) */
+export const requestSendForgotPasswordMail = async (data) => {
+    const res = await apiClient.post(`${apiLibraryMail}/forgot-password`, data);
+    return res.data;
+};
+
+/** Staff: duyệt yêu cầu quên mật khẩu -> reset 123 + notify */
+export const requestResolveForgotPasswordMail = async (mailId) => {
+    const res = await apiClient.post(`${apiLibraryMail}/resolve-forgot-password`, { mailId });
     return res.data;
 };

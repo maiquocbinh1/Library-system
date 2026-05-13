@@ -8,16 +8,17 @@ import {
     UserOutlined, BookOutlined, SolutionOutlined, ReadOutlined,
     WarningOutlined, DollarCircleOutlined, BarChartOutlined,
     ArrowUpOutlined, ArrowDownOutlined, ExportOutlined,
-    SendOutlined, BellOutlined,
+    BellOutlined,
 } from '@ant-design/icons';
 import {
     requestGetAllHistoryBook, requestGetAllProduct, requestGetAllUsers, requestStatistics,
     requestGetEisKpis, requestGetCategoryTrends, requestGetDrilldown, requestPostWhatIf,
     requestGetHighRiskUsers, requestGetUnusedBooks, requestExportHighRisk, requestExportUnusedBooks,
-    requestSendWarningEmail, requestSendMassEmail,
+    requestSendMassNotification,
 } from '../../config/request';
 import dayjs from 'dayjs';
 import { isPendingApproval } from '../../utils/loanTicketStatus';
+import { compareByBookCodeAsc } from '../../utils/bookCodeSort';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const fmtVnd = (v) => Number(v || 0).toLocaleString('vi-VN') + ' đ';
@@ -78,7 +79,7 @@ const Statistics = () => {
     const [highRiskLoading, setHighRiskLoading] = useState(false);
     const [unusedBooks, setUnusedBooks] = useState([]);
     const [unusedLoading, setUnusedLoading] = useState(false);
-    const [sendingEmail, setSendingEmail] = useState(null);
+    // const [sendingEmail, setSendingEmail] = useState(null);
 
     // Mass email modal
     const [massEmailOpen, setMassEmailOpen] = useState(false);
@@ -138,7 +139,7 @@ const Statistics = () => {
         try {
             const res = await requestGetAllProduct();
             const list = Array.isArray(res?.metadata) ? res.metadata : Array.isArray(res?.data) ? res.data : [];
-            setBooks(list.map((item) => ({
+            const normalized = list.map((item) => ({
                 ...item,
                 id: item?._id ? String(item._id) : item?.id,
                 bookCode: item?.bookCode || '',
@@ -147,7 +148,8 @@ const Statistics = () => {
                 category_1: item?.category_1 || item?.category || '',
                 stock: Number(item?.stock || 0),
                 year: item?.year || item?.publishYear || '',
-            })));
+            }));
+            setBooks([...normalized].sort(compareByBookCodeAsc));
         } finally { setBooksLoading(false); }
     };
     const fetchPendingRequests = async () => {
@@ -191,26 +193,19 @@ const Statistics = () => {
         }
     };
 
-    // ── send warning email ────────────────────────────────────────────────────
-    const handleSendWarning = async (record) => {
-        setSendingEmail(record.id);
-        try {
-            await requestSendWarningEmail({ userId: record.id, total_fine: record.totalFine, overdue_books: record.overdueBooksCount });
-            message.success(`Đã gửi email cảnh báo tới ${record.email}`);
-            setHighRiskUsers((prev) =>
-                prev.map((u) => u.id === record.id ? { ...u, warningCount: (u.warningCount || 0) + 1 } : u)
-            );
-        } catch { message.error('Gửi email thất bại'); }
-        finally { setSendingEmail(null); }
-    };
+    // Cảnh báo rủi ro cao: hệ thống tự nhắc theo lịch (job) — ở đây chỉ hiển thị số lần đã nhắc.
 
-    // ── mass email ────────────────────────────────────────────────────────────
+    // ── mass notification ────────────────────────────────────────────────────
     const handleMassEmail = async () => {
         try {
             const values = await massForm.validateFields();
             setMassEmailLoading(true);
-            await requestSendMassEmail(values);
-            message.success('Đã gửi thông báo toàn trường thành công!');
+            // gửi broadcast nội bộ: lấy danh sách tất cả độc giả (chỉ user) từ bảng users đã nạp trong modal (fallback: gọi requestGetAllUsers)
+            const res = await requestGetAllUsers();
+            const list = Array.isArray(res?.metadata) ? res.metadata : [];
+            const userIds = list.filter((u) => String(u?.role || '').toLowerCase() === 'user').map((u) => u.id || u.mysqlId || u._id).filter(Boolean);
+            await requestSendMassNotification({ userIds, title: values.subject, contentHtml: `<div style="white-space:pre-wrap">${String(values.content || '')}</div>` });
+            message.success('Đã gửi thông báo nội bộ thành công!');
             setMassEmailOpen(false);
             massForm.resetFields();
         } catch (e) {
@@ -324,17 +319,7 @@ const Statistics = () => {
         { title: 'Họ tên', dataIndex: 'fullName', key: 'fullName', width: 200, ellipsis: true },
         { title: 'Tổng nợ phạt', dataIndex: 'totalFine', key: 'totalFine', width: 150, render: (v) => <span className="font-semibold text-red-600">{fmtVnd(v)}</span> },
         { title: 'Sách QH', dataIndex: 'overdueBooksCount', key: 'overdueBooksCount', width: 100 },
-        { title: 'Lần nhắc', dataIndex: 'warningCount', key: 'warningCount', width: 100 },
-        {
-            title: 'Thao tác', key: 'action', width: 160,
-            render: (_, record) => (
-                <Button size="small" type="primary" icon={<SendOutlined />}
-                    loading={sendingEmail === record.id}
-                    onClick={() => handleSendWarning(record)}>
-                    Gửi Email
-                </Button>
-            ),
-        },
+        { title: 'Số lần đã nhắc', dataIndex: 'warningCount', key: 'warningCount', width: 130 },
     ];
     const unusedBookColumns = [
         { title: 'ISBN', dataIndex: 'isbn', key: 'isbn', width: 160 },

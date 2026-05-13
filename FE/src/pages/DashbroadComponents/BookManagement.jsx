@@ -8,6 +8,7 @@ import {
     requestUpdateProduct,
     requestUploadImageProduct,
 } from '../../config/request';
+import { compareByBookCodeAsc } from '../../utils/bookCodeSort';
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -68,7 +69,7 @@ const BookManagement = () => {
             // Mở tab Console trên trình duyệt và kiểm tra normalized.length.
             // Nếu length = 158 thì Ant Design Table sẽ tự động phân trang toàn bộ dữ liệu.
             console.log('BookManagement products:', normalized);
-            setData(normalized);
+            setData([...normalized].sort(compareByBookCodeAsc));
         } catch (error) {
             console.error('Failed to fetch books:', error);
             message.error('Không thể tải dữ liệu sách');

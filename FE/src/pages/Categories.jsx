@@ -5,6 +5,7 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import BookCard from '../components/BookCard';
 import { requestGetAllProduct } from '../config/request';
+import { compareByBookCodeAsc } from '../utils/bookCodeSort';
 
 const PAGE_SIZE = 12;
 
@@ -59,7 +60,9 @@ function Categories() {
         const fetchProducts = async () => {
             try {
                 const res = await requestGetAllProduct();
-                const productList = Array.isArray(res?.metadata) ? res.metadata.map(normalizeProduct).filter(Boolean) : [];
+                const productList = Array.isArray(res?.metadata)
+                    ? res.metadata.map(normalizeProduct).filter(Boolean).sort(compareByBookCodeAsc)
+                    : [];
                 const uniqueCategories = [
                     ...new Set(
                         productList

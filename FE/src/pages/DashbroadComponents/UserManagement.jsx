@@ -6,6 +6,7 @@ import {
     requestGetAllUsers,
     requestIssueReaderCard,
     requestUpdatePassword,
+    requestSendWarningNotification,
     requestUpdateUserAdmin,
     requestGetHighRiskUsers,
     requestGetAllHistoryBook,
@@ -53,6 +54,7 @@ const UserManagement = () => {
     const [fineRows, setFineRows] = useState([]);
     const [detailLoading, setDetailLoading] = useState(false);
     const [lockLoading, setLockLoading] = useState(false);
+    const [searchText, setSearchText] = useState('');
 
     const columns = [
         { title: 'MSV', key: 'studentId', width: 140, render: (_, r) => r.studentId || r.readerCode || '—' },
@@ -206,6 +208,26 @@ const UserManagement = () => {
         }
     };
 
+    const handleResetPassDefault = async () => {
+        if (!detailUser) return;
+        try {
+            setLockLoading(true);
+            await requestUpdatePassword({ userId: detailUser.id, password: '123' });
+            await requestSendWarningNotification({
+                userId: detailUser.id,
+                title: 'Mật khẩu đã được đặt lại',
+                contentHtml:
+                    '<p>Mật khẩu của bạn đã được thư viện đặt lại về <b>mặc định: 123</b>. Vui lòng đăng nhập và đổi mật khẩu mới.</p>',
+                dedupeKey: `RESET_PASS:${detailUser.id}:${Date.now()}`,
+            });
+            message.success('Đã reset mật khẩu về mặc định 123 và gửi thông báo cho sinh viên.');
+        } catch (e) {
+            message.error(e?.response?.data?.message || 'Không thể reset mật khẩu');
+        } finally {
+            setLockLoading(false);
+        }
+    };
+
     const handleUpdateUser = async () => {
         try {
             setLoading(true);
@@ -269,13 +291,22 @@ const UserManagement = () => {
 
     const filteredData = useMemo(() => {
         /** Chỉ độc giả (patron) — không hiển thị admin, thủ thư, nhân viên kho. */
+        const q = String(searchText || '').trim().toLowerCase();
         const users = data.filter((u) => String(u.role || '').toLowerCase() === 'user');
-        if (activeTab === 'all') return users;
-        if (activeTab === 'active') return users.filter((u) => u.verificationStatus === 'verified');
-        if (activeTab === 'fined') return users.filter((u) => riskMap[u.id]?.totalFine > 0);
-        if (activeTab === 'overdue') return users.filter((u) => riskMap[u.id]?.overdueBooksCount > 0);
-        return users;
-    }, [data, riskMap, activeTab]);
+        const searched = !q
+            ? users
+            : users.filter((u) => {
+                  const msv = String(u.studentId || u.readerCode || u.idStudent || '').toLowerCase();
+                  const name = String(u.fullName || '').toLowerCase();
+                  const email = String(u.email || '').toLowerCase();
+                  return msv.includes(q) || name.includes(q) || email.includes(q);
+              });
+        if (activeTab === 'all') return searched;
+        if (activeTab === 'active') return searched.filter((u) => u.verificationStatus === 'verified');
+        if (activeTab === 'fined') return searched.filter((u) => riskMap[u.id]?.totalFine > 0);
+        if (activeTab === 'overdue') return searched.filter((u) => riskMap[u.id]?.overdueBooksCount > 0);
+        return searched;
+    }, [data, riskMap, activeTab, searchText]);
 
     const tabItems = [
         { key: 'all', label: 'Tất cả' },
@@ -309,7 +340,14 @@ const UserManagement = () => {
             <div className="mb-4 flex justify-between">
                 <h2 className="text-2xl font-bold">Danh sách & tra cứu độc giả</h2>
             </div>
-            <Search placeholder="Tìm kiếm người dùng" onSearch={() => {}} style={{ width: 300, marginBottom: 12 }} />
+            <Search
+                allowClear
+                placeholder="Tìm MSV, tên, email..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                onSearch={(v) => setSearchText(v)}
+                style={{ width: 320, marginBottom: 12 }}
+            />
             <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} className="mb-3" />
             <Table columns={columns} dataSource={filteredData} rowKey={(record) => record.id || record.email} scroll={{ x: 1020 }} />
 
@@ -344,6 +382,11 @@ const UserManagement = () => {
                                 >
                                     {detailUser.libraryCardBlocked ? 'Mở khóa thẻ' : 'Khóa thẻ / tài khoản mượn'}
                                 </Button>
+                                {detailUser.verificationStatus === 'verified' && (
+                                    <Button danger loading={lockLoading} onClick={handleResetPassDefault}>
+                                        ResetPass (123)
+                                    </Button>
+                                )}
                             </Space>
                         )}
                         <Divider className="!my-2" />

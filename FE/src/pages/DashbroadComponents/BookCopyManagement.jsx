@@ -20,6 +20,7 @@ import {
     requestGetBookCopies,
     requestUpdateProduct,
 } from '../../config/request';
+import { compareByBookCodeAsc } from '../../utils/bookCodeSort';
 
 const { Text } = Typography;
 
@@ -66,14 +67,13 @@ const InventoryManagement = () => {
         try {
             const res = await requestGetAllProduct();
             const list = Array.isArray(res?.metadata) ? res.metadata : [];
-            setBooks(
-                list.map((b) => ({
+            const normalized = list.map((b) => ({
                     ...b,
                     id: getBookId(b),
                     stock: Number(b?.stock || 0),
                     totalCopies: Number(b?.totalCopies || 0),
-                })),
-            );
+                }));
+            setBooks([...normalized].sort(compareByBookCodeAsc));
         } catch (e) {
             message.error(e?.response?.data?.message || 'Không thể tải dữ liệu kho');
         } finally {

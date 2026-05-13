@@ -9,6 +9,7 @@ const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 const route = require('./routes/index.routes');
 const path = require('path');
+const { startOverdueNotificationJob, runOnceOverdueNotificationJob } = require('./jobs/overdueNotification.job');
 
 app.use(
     cors({
@@ -29,6 +30,15 @@ async function bootstrap() {
     }
 
     route(app);
+
+    // Job tự động gửi thông báo quá hạn (chỉ khi Mongo OK)
+    if (mongoOk) {
+        startOverdueNotificationJob();
+        // Chạy 1 lần khi boot để không phụ thuộc đúng giờ
+        runOnceOverdueNotificationJob().catch((e) => {
+            console.error('[overdueNotificationJob] boot run error:', e?.message || e);
+        });
+    }
 
     app.use((err, req, res, next) => {
         const statusCode = err.statusCode || 500;

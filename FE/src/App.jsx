@@ -4,6 +4,7 @@ import Footer from './components/Footer';
 import Header from './components/Header';
 import { requestGetAllProduct } from './config/request';
 import { useState } from 'react';
+import { compareByBookCodeAsc } from './utils/bookCodeSort';
 
 /** MySQL: `id`; Mongo: `mysqlId` / `_id` */
 function normalizeProduct(p) {
@@ -21,7 +22,7 @@ function App() {
                 const res = await requestGetAllProduct();
                 const raw = res?.metadata;
                 const list = Array.isArray(raw) ? raw : [];
-                setDataProduct(list.map(normalizeProduct));
+                setDataProduct(list.map(normalizeProduct).sort(compareByBookCodeAsc));
             } catch {
                 setDataProduct([]);
             }

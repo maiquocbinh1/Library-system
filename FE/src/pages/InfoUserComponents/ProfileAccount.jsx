@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
     Avatar, Button, Card, Col, Form, Input, message, Row, Table, Upload, Typography,
 } from 'antd';
-import { BookOutlined, HistoryOutlined, UserOutlined, UploadOutlined } from '@ant-design/icons';
+import { BookOutlined, HistoryOutlined, UserOutlined, UploadOutlined, WarningOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
@@ -17,7 +17,7 @@ import { loanStatusMeta, normalizeLoanStatusKey } from '../../utils/loanTicketSt
 
 const { Title, Text } = Typography;
 
-function StatCard({ label, value, tone }) {
+function StatCard({ label, value, tone, icon }) {
     const tones = {
         blue: 'from-sky-50 to-indigo-50 border-sky-100 text-sky-900',
         green: 'from-emerald-50 to-teal-50 border-emerald-100 text-emerald-900',
@@ -27,7 +27,9 @@ function StatCard({ label, value, tone }) {
         <div
             className={`flex items-center gap-4 rounded-2xl border bg-gradient-to-br px-5 py-4 shadow-sm ${tones[tone] || tones.blue}`}
         >
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/80 shadow-inner" />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/80 shadow-inner">
+                <span className="text-xl opacity-80">{icon}</span>
+            </div>
             <div>
                 <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{label}</div>
                 <div className="text-3xl font-bold tabular-nums">{value}</div>
@@ -147,13 +149,28 @@ const ProfileAccount = ({ loans = [], loansLoading, unpaidFineSummary }) => {
 
             <Row gutter={[16, 16]}>
                 <Col xs={24} md={8}>
-                    <StatCard label="Đang mượn" value={loansLoading ? '…' : activeBorrowCount} tone="blue" />
+                    <StatCard
+                        label="Đang mượn"
+                        value={loansLoading ? '…' : activeBorrowCount}
+                        tone="blue"
+                        icon={<BookOutlined />}
+                    />
                 </Col>
                 <Col xs={24} md={8}>
-                    <StatCard label="Lịch sử" value={loansLoading ? '…' : loans.length} tone="green" />
+                    <StatCard
+                        label="Lịch sử"
+                        value={loansLoading ? '…' : loans.length}
+                        tone="green"
+                        icon={<HistoryOutlined />}
+                    />
                 </Col>
                 <Col xs={24} md={8}>
-                    <StatCard label="Vi phạm (phạt chưa nộp)" value={violationCount} tone="rose" />
+                    <StatCard
+                        label="Vi phạm (phạt chưa nộp)"
+                        value={violationCount}
+                        tone="rose"
+                        icon={<WarningOutlined />}
+                    />
                 </Col>
             </Row>
 
@@ -308,11 +325,6 @@ const ProfileAccount = ({ loans = [], loansLoading, unpaidFineSummary }) => {
                             >
                                 Cập nhật mật khẩu
                             </Button>
-                            <div className="mt-3 text-center">
-                                <Link to="/forgot-password" className="text-sm text-violet-300 hover:text-white">
-                                    Quên mật khẩu? Đặt lại qua email
-                                </Link>
-                            </div>
                         </Form>
                     </Card>
                 </Col>

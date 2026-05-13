@@ -137,6 +137,7 @@ function buildMenuItems(isAdmin) {
             icon: <UserOutlined />,
             label: 'Độc giả',
             children: [
+                { key: 'email-logs', icon: <MailOutlined />, label: 'Nhật ký thư' },
                 { key: 'patron-profiles', icon: <TeamOutlined />, label: 'Danh sách & tra cứu' },
                 { key: 'card-issue', icon: <SolutionOutlined />, label: 'Kích hoạt thẻ độc giả' },
             ],
@@ -153,7 +154,6 @@ function buildMenuItems(isAdmin) {
                 { key: 'personnel', icon: <UsergroupAddOutlined />, label: 'Quản lý nhân sự' },
                 { key: 'audit-log', icon: <FileSearchOutlined />, label: 'Nhật ký hệ thống (Audit)' },
                 { key: 'policy', icon: <ControlOutlined />, label: 'Cấu hình chính sách' },
-                { key: 'email-logs', icon: <MailOutlined />, label: 'Nhật ký gửi thư' },
                 { key: 'finance', icon: <DollarOutlined />, label: 'Tài chính' },
             ],
         });
@@ -234,7 +234,7 @@ function Admin() {
     const activePane = VIEW_COMPONENTS[selectedKey] || VIEW_COMPONENTS.stats;
 
     return (
-        <Layout className="admin-layout-root" style={{ minHeight: '100vh' }}>
+        <Layout className="admin-layout-root" style={{ height: '100vh', overflow: 'hidden' }}>
             {/* Cột trái: Sidebar — không dùng position fixed để giữ đúng flex 2 cột của Ant Design */}
             <Sider
                 width={260}
@@ -245,6 +245,7 @@ function Admin() {
                 style={{
                     background: '#1a3353',
                     overflow: 'auto',
+                    height: '100vh',
                 }}
             >
                 <div
@@ -321,11 +322,10 @@ function Admin() {
                 <Content
                     className="admin-content-area"
                     style={{
-                        margin: '24px 16px',
-                        padding: 24,
                         background: '#f0f2f5',
                         flex: 1,
                         overflow: 'auto',
+                        padding: '24px 16px',
                     }}
                 >
                     <div className="admin-content-inner" style={{ padding: 24, minHeight: '100%' }}>

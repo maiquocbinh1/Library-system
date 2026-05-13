@@ -37,6 +37,8 @@ const userMongoSchema = new mongoose.Schema(
         libraryCardExpiresAt: { type: Date, default: null, index: true },
         /** Thủ thư/Admin khóa thẻ — không cho mượn dù còn MSV */
         libraryCardBlocked: { type: Boolean, default: false, index: true },
+        /** Số lần hệ thống/nhân viên đã nhắc nhở (thông báo quá hạn). */
+        warningCount: { type: Number, default: 0, min: 0 },
     },
     { timestamps: true, collection: 'library_users' },
 );

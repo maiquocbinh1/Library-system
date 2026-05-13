@@ -2,6 +2,8 @@
 
 .admin-layout-root.ant-layout {
     min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
 }
 
 /* Cột phải: chiếm phần còn lại, cho phép bảng co trong flex */
@@ -10,7 +12,8 @@
     flex-direction: column;
     flex: 1;
     min-width: 0;
-    min-height: 100vh;
+    min-height: 0;
+    height: 100%;
 }
 
 .admin-sider-navy {

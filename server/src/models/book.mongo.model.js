@@ -26,6 +26,11 @@ const bookMongoSchema = new mongoose.Schema(
         totalCopies: { type: Number, required: true, default: 0 },
         /** Giá bìa (phục vụ tính phạt sau này) */
         coverPrice: { type: Number, default: null },
+        /**
+         * Giá nhập (VNĐ) cho mỗi cuốn (bản sao vật lý) — phục vụ báo cáo tài chính/chi phí nhập sách.
+         * Có thể seed dữ liệu bằng script `npm run seed:book-prices`.
+         */
+        importPriceVnd: { type: Number, default: null, min: 0 },
         covertType: {
             type: String,
             enum: ['hard', 'soft'],
