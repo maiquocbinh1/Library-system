@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     Table, Button, Tag, Card, Input, message, notification, Popconfirm,
-    Space, List, Typography, Descriptions, Alert, Badge, Spin, Divider,
+    Space, List, Typography, Descriptions, Alert, Divider,
 } from 'antd';
 import {
     BarcodeOutlined, CheckCircleOutlined, CloseCircleOutlined,
@@ -9,14 +9,12 @@ import {
 } from '@ant-design/icons';
 import {
     requestGetAllHistoryBook,
-    requestReturnBooks,
     requestUpdateStatusBook,
-    requestConfirmBorrow,
+    requestNotifyPickup,
     requestReturnByBarcode,
-    requestCheckBarcode,
 } from '../../config/request';
 import dayjs from 'dayjs';
-import { isBorrowingActive, isPendingApproval, normalizeLoanStatusKey } from '../../utils/loanTicketStatus';
+import { isBorrowingActive, isPendingApproval, isReadyForPickup, normalizeLoanStatusKey } from '../../utils/loanTicketStatus';
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -26,7 +24,8 @@ const { Text } = Typography;
 function statusTagConfig(status) {
     const k = normalizeLoanStatusKey(status);
     const map = {
-        PENDING_APPROVAL: { color: 'orange', text: 'Chờ duyệt' },
+        PENDING_APPROVAL: { color: 'orange', text: 'Chờ xác nhận yêu cầu' },
+        READY_FOR_PICKUP: { color: 'cyan', text: 'Chờ đến quầy lấy sách' },
         BORROWING: { color: 'green', text: 'Đang mượn' },
         OVERDUE: { color: 'red', text: 'Quá hạn' },
         RETURNED: { color: 'default', text: 'Đã trả' },
@@ -64,43 +63,6 @@ function BarcodeResultTag({ result }) {
     );
 }
 
-// ─── BarcodeChecker — gõ một barcode để xem thông tin ───────────────────────
-
-function BarcodeInfoPreview({ barcode }) {
-    const [info, setInfo] = useState(null);
-    const [checking, setChecking] = useState(false);
-
-    useEffect(() => {
-        if (!barcode) { setInfo(null); return; }
-        setChecking(true);
-        requestCheckBarcode(barcode)
-            .then((res) => setInfo(res?.metadata || null))
-            .catch(() => setInfo({ error: true }))
-            .finally(() => setChecking(false));
-    }, [barcode]);
-
-    if (!barcode) return null;
-    return (
-        <Spin spinning={checking} size="small">
-            {info?.error ? (
-                <Alert type="error" showIcon message={`"${barcode}" không tồn tại trong hệ thống`} />
-            ) : info ? (
-                <Alert
-                    type={info.status === 'AVAILABLE' ? 'success' : info.status === 'BORROWED' ? 'warning' : 'info'}
-                    showIcon
-                    message={<span className="font-semibold">{info.title}</span>}
-                    description={
-                        <span>
-                            Mã: <b className="font-mono">{info.bookCode}</b> &nbsp;|&nbsp;
-                            Trạng thái: <Tag>{info.status}</Tag>
-                        </span>
-                    }
-                />
-            ) : null}
-        </Spin>
-    );
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const LoanRequestManagement = ({ presetFilter, pageTitle }) => {
@@ -109,18 +71,13 @@ const LoanRequestManagement = ({ presetFilter, pageTitle }) => {
     const [loading, setLoading] = useState(false);
     const [searchText, setSearchText] = useState('');
 
-    // ── Confirm-borrow state (tab phê duyệt) ──────────────────────────────────
-    const [barcodeInput, setBarcodeInput] = useState('');
-    const [barcodeList, setBarcodeList] = useState([]);
-    const [previewBarcode, setPreviewBarcode] = useState('');
-    const [confirmLoading, setConfirmLoading] = useState(false);
+    const [notifyPickupLoading, setNotifyPickupLoading] = useState(false);
 
     // ── Return-by-barcode state (tab trả sách) ────────────────────────────────
     const [returnInput, setReturnInput] = useState('');
     const [returnResults, setReturnResults] = useState([]);
     const [returnLoading, setReturnLoading] = useState(false);
 
-    const barcodeInputRef = useRef(null);
     const returnInputRef = useRef(null);
 
     const fetchData = async () => {
@@ -141,59 +98,28 @@ const LoanRequestManagement = ({ presetFilter, pageTitle }) => {
 
     useEffect(() => { fetchData(); }, []);
 
-    // Reset khi đổi phiếu được chọn
-    useEffect(() => {
-        setBarcodeList([]);
-        setBarcodeInput('');
-        setPreviewBarcode('');
-    }, [selected]);
-
-    // ── Barcode input cho confirm-borrow ──────────────────────────────────────
-
-    const handleAddBarcode = () => {
-        const bc = barcodeInput.trim().toUpperCase();
-        if (!bc) return;
-        if (barcodeList.includes(bc)) { message.warning(`Mã "${bc}" đã được thêm`); setBarcodeInput(''); return; }
-        setBarcodeList((prev) => [...prev, bc]);
-        setBarcodeInput('');
-        setPreviewBarcode('');
-        setTimeout(() => barcodeInputRef.current?.focus(), 0);
-    };
-
-    const handleBarcodeKeyDown = (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); handleAddBarcode(); }
-    };
-
-    const handleRemoveBarcode = (bc) => {
-        setBarcodeList((prev) => prev.filter((b) => b !== bc));
-    };
-
-    // ── Confirm borrow ────────────────────────────────────────────────────────
-
-    const handleConfirmBorrow = async () => {
-        if (!selected) { message.error('Chưa chọn phiếu mượn'); return; }
-        if (!barcodeList.length) { message.error('Chưa nhập mã sách nào'); return; }
-        const reqQty = selected.requestedQuantity || selected.quantity || 0;
-        if (barcodeList.length !== reqQty) {
-            message.error(`Cần đúng ${reqQty} mã sách, hiện có ${barcodeList.length}`);
+    /** Bước 1: gán bản RESERVED + thông báo SV đến quầy (chưa xuất kho). */
+    const handleNotifyPickupRequest = async () => {
+        if (!selected) { message.error('Chưa chọn phiếu'); return; }
+        if (!isPendingApproval(selected.status)) {
+            message.warning('Chỉ dùng cho phiếu đang chờ xác nhận yêu cầu.');
             return;
         }
         try {
-            setConfirmLoading(true);
-            const res = await requestConfirmBorrow({ loanTicketId: selected.id, barcodes: barcodeList });
+            setNotifyPickupLoading(true);
+            const res = await requestNotifyPickup({ loanTicketId: selected.id });
             notification.success({
-                message: 'Xuất kho thành công',
-                description: res?.message || 'Đã xác nhận cho mượn sách.',
+                message: 'Đã xử lý yêu cầu',
+                description: res?.message || 'Đã gán bản sao và gửi thông báo cho sinh viên.',
                 placement: 'topRight',
                 duration: 6,
             });
-            setBarcodeList([]);
             setSelected(null);
             fetchData();
         } catch (err) {
-            message.error(err?.response?.data?.message || 'Không thể xác nhận xuất kho');
+            message.error(err?.response?.data?.message || 'Không thể gán sách / gửi thông báo');
         } finally {
-            setConfirmLoading(false);
+            setNotifyPickupLoading(false);
         }
     };
 
@@ -238,23 +164,51 @@ const LoanRequestManagement = ({ presetFilter, pageTitle }) => {
         if (e.key === 'Enter') { e.preventDefault(); handleReturnByBarcode(); }
     };
 
-    // ── Old return by ticket ID (giữ lại cho compat) ──────────────────────────
+    /** Trả toàn bộ cuốn trên phiếu — dùng API mới return-by-barcode (POST /return-books đã 410). */
     const handleReturnBooks = async (record) => {
+        const copies = Array.isArray(record?.bookCopies) ? record.bookCopies : [];
+        const barcodes = [...new Set(copies.map((c) => String(c.barcode || '').trim()).filter(Boolean))];
+        if (!barcodes.length) {
+            message.warning('Phiếu không có mã bản sao để trả');
+            return;
+        }
         try {
             setLoading(true);
-            const res = await requestReturnBooks({ loanTicketId: record.id });
-            const meta = res?.metadata;
-            const fineAmt = Number(meta?.fine?.fineAmount ?? 0);
-            if (fineAmt > 0) {
+            const res = await requestReturnByBarcode({ barcodes });
+            const results = Array.isArray(res?.metadata) ? res.metadata : [];
+            const ok = results.filter((r) => r.success);
+            const fail = results.filter((r) => !r.success);
+            if (!results.length) {
+                message.error('Không nhận được kết quả trả sách từ máy chủ');
+                return;
+            }
+            if (fail.length === 0) {
+                const fines = ok.filter((r) => Number(r?.fineAmount ?? r?.fine?.fineAmount ?? 0) > 0);
+                if (fines.length) {
+                    notification.warning({
+                        message: 'Trả sách hoàn tất',
+                        description: `${ok.length} cuốn đã nhận trả; có ${fines.length} cuốn phát sinh phạt quá hạn (xem chi tiết trong Quản lý phạt).`,
+                        duration: 10,
+                        placement: 'topRight',
+                    });
+                } else {
+                    notification.success({
+                        message: 'Trả sách thành công',
+                        description: `Đã nhận trả ${ok.length} cuốn về thư viện.`,
+                        placement: 'topRight',
+                    });
+                }
+                setSelected(null);
+            } else if (ok.length) {
                 notification.warning({
-                    message: 'Trả sách thành công',
-                    description: `Sinh viên trễ hạn ${meta.overdueDays} ngày, phát sinh phiếu phạt ${fineAmt.toLocaleString('vi-VN')} VNĐ.`,
-                    duration: 10, placement: 'topRight',
+                    message: 'Trả sách một phần',
+                    description: `${ok.length} cuốn thành công, ${fail.length} cuốn lỗi. ${fail[0]?.message || ''}`.trim(),
+                    duration: 12,
+                    placement: 'topRight',
                 });
             } else {
-                notification.success({ message: 'Trả sách thành công', description: 'Đã xác nhận nhận sách về thư viện.', placement: 'topRight' });
+                message.error(fail[0]?.message || 'Không thể nhận trả sách');
             }
-            setSelected(null);
             fetchData();
         } catch (err) {
             message.error(err?.response?.data?.message || 'Không thể xác nhận trả sách');
@@ -266,7 +220,9 @@ const LoanRequestManagement = ({ presetFilter, pageTitle }) => {
     // ── Filter ────────────────────────────────────────────────────────────────
 
     const dataByPreset = useMemo(() => {
-        if (presetFilter === 'approval') return rows.filter((item) => isPendingApproval(item.status));
+        if (presetFilter === 'approval') {
+            return rows.filter((item) => isPendingApproval(item.status) || isReadyForPickup(item.status));
+        }
         if (presetFilter === 'returns') return rows.filter((item) => isBorrowingActive(item.status));
         return rows;
     }, [rows, presetFilter]);
@@ -335,9 +291,9 @@ const LoanRequestManagement = ({ presetFilter, pageTitle }) => {
             title: 'Thao tác', key: 'action', width: 130, fixed: 'right',
             render: (_, record) => (
                 <Space size="small" wrap onClick={(e) => e.stopPropagation()}>
-                    {isPendingApproval(record.status) && (
+                    {(isPendingApproval(record.status) || isReadyForPickup(record.status)) && (
                         <Button type="primary" size="small" onClick={() => setSelected(record)}>
-                            Xuất kho
+                            {isPendingApproval(record.status) ? 'Xử lý yêu cầu' : 'Chi tiết'}
                         </Button>
                     )}
                     {isBorrowingActive(record.status) && (
@@ -434,97 +390,78 @@ const LoanRequestManagement = ({ presetFilter, pageTitle }) => {
                             </Descriptions.Item>
                         </Descriptions>
 
-                        {/* ── Phê duyệt + nhập barcode ─────────────────────── */}
-                        {isPendingApproval(selected.status) && (
+                        {(isPendingApproval(selected.status) || isReadyForPickup(selected.status)) && (
                             <div>
-                                <Divider className="my-3" />
-                                <div className="mb-2 flex items-center gap-2">
-                                    <BarcodeOutlined className="text-indigo-600" />
-                                    <span className="font-semibold text-slate-700">Nhập mã sách đang cầm trên tay</span>
-                                    <Badge count={`${barcodeList.length}/${reqQty}`} color={barcodeList.length === reqQty ? 'green' : 'orange'} />
-                                </div>
-                                <p className="mb-2 text-xs text-slate-400">Nhìn mã dán trên bìa sách → gõ → Enter. Cần đúng {reqQty} cuốn.</p>
-
-                                <div className="mb-3 flex items-center gap-2">
-                                    <Input
-                                        ref={barcodeInputRef}
-                                        value={barcodeInput}
-                                        onChange={(e) => {
-                                            const v = e.target.value.toUpperCase();
-                                            setBarcodeInput(v);
-                                            setPreviewBarcode(v);
-                                        }}
-                                        onKeyDown={handleBarcodeKeyDown}
-                                        placeholder="VD: DNT-01"
-                                        className="max-w-xs rounded-xl font-mono"
-                                        prefix={<BarcodeOutlined className="text-slate-400" />}
-                                        suffix={<EnterOutlined className="text-slate-300" />}
-                                        autoFocus
-                                    />
-                                    <Button onClick={handleAddBarcode} className="rounded-xl">Thêm</Button>
-                                </div>
-
-                                {/* Preview thông tin barcode vừa gõ */}
-                                {previewBarcode && (
-                                    <div className="mb-2">
-                                        <BarcodeInfoPreview barcode={previewBarcode} onClear={() => setPreviewBarcode('')} />
-                                    </div>
-                                )}
-
-                                {/* Danh sách barcode đã thêm */}
-                                {barcodeList.length > 0 && (
-                                    <List
-                                        size="small"
-                                        bordered
-                                        className="mb-3 rounded-xl"
-                                        dataSource={barcodeList}
-                                        locale={{ emptyText: 'Chưa có mã sách nào' }}
-                                        renderItem={(bc) => (
-                                            <List.Item
-                                                actions={[
-                                                    <Button
-                                                        type="link"
-                                                        danger
-                                                        size="small"
-                                                        onClick={() => handleRemoveBarcode(bc)}
-                                                    >
-                                                        Xóa
-                                                    </Button>,
-                                                ]}
+                                {isPendingApproval(selected.status) && (
+                                    <>
+                                        <Alert
+                                            type="info"
+                                            showIcon
+                                            className="mb-3"
+                                            message="Xác nhận yêu cầu mượn (chưa xuất kho)"
+                                            description={
+                                                <>
+                                                    Bấm nút bên dưới để hệ thống <strong>gán đúng số bản sao</strong> theo yêu cầu và{' '}
+                                                    <strong>gửi thông báo</strong> cho sinh viên đến thư viện lấy sách. Chưa tính là đã mượn —
+                                                    bước xuất kho thực hiện tại quầy <strong>Mượn — trả sách</strong>.
+                                                </>
+                                            }
+                                        />
+                                        <Space wrap className="mt-2">
+                                            <Popconfirm
+                                                title={`Gán ${reqQty} bản sao và gửi thông báo cho ${selected.fullName}?`}
+                                                okText="Đồng ý"
+                                                cancelText="Hủy"
+                                                onConfirm={handleNotifyPickupRequest}
                                             >
-                                                <Tag color="processing" className="font-mono">{bc}</Tag>
-                                            </List.Item>
-                                        )}
-                                    />
+                                                <Button type="primary" loading={notifyPickupLoading} className="rounded-xl">
+                                                    Gửi thông báo &amp; gán bản sách
+                                                </Button>
+                                            </Popconfirm>
+                                            <Popconfirm
+                                                title="Từ chối yêu cầu mượn này?"
+                                                okText="Từ chối"
+                                                cancelText="Hủy"
+                                                okButtonProps={{ danger: true }}
+                                                onConfirm={handleRejectBorrow}
+                                            >
+                                                <Button danger loading={loading} className="rounded-xl">
+                                                    Từ chối yêu cầu
+                                                </Button>
+                                            </Popconfirm>
+                                        </Space>
+                                    </>
                                 )}
-
-                                <Space wrap>
-                                    <Popconfirm
-                                        title={`Xác nhận xuất ${barcodeList.length} cuốn cho ${selected.fullName}?`}
-                                        okText="Xuất kho"
-                                        cancelText="Hủy"
-                                        onConfirm={handleConfirmBorrow}
-                                        disabled={barcodeList.length !== reqQty}
-                                    >
-                                        <Button
-                                            type="primary"
-                                            loading={confirmLoading}
-                                            disabled={barcodeList.length !== reqQty}
-                                            className="rounded-xl"
-                                        >
-                                            Xác nhận xuất kho ({barcodeList.length}/{reqQty})
-                                        </Button>
-                                    </Popconfirm>
-                                    <Popconfirm
-                                        title="Từ chối phiếu mượn này?"
-                                        okText="Từ chối"
-                                        cancelText="Hủy"
-                                        okButtonProps={{ danger: true }}
-                                        onConfirm={handleRejectBorrow}
-                                    >
-                                        <Button danger loading={loading} className="rounded-xl">Từ chối</Button>
-                                    </Popconfirm>
-                                </Space>
+                                {isReadyForPickup(selected.status) && (
+                                    <>
+                                        <List
+                                            size="small"
+                                            bordered
+                                            className="mb-3 rounded-xl"
+                                            dataSource={(selected.bookCopies || []).filter((c) => c.barcode)}
+                                            locale={{ emptyText: '—' }}
+                                            renderItem={(item) => (
+                                                <List.Item>
+                                                    <Tag color="cyan" className="font-mono">{item.barcode}</Tag>
+                                                    <Text type="secondary" className="text-xs">{item.status}</Text>
+                                                </List.Item>
+                                            )}
+                                        />
+                                        <Space wrap className="mt-2">
+                                            <Popconfirm
+                                                title="Hủy phiếu và trả các bản đang giữ chỗ về kho?"
+                                                okText="Hủy phiếu"
+                                                cancelText="Không"
+                                                okButtonProps={{ danger: true }}
+                                                onConfirm={handleRejectBorrow}
+                                            >
+                                                <Button danger loading={loading} className="rounded-xl">
+                                                    Hủy phiếu / trả chỗ
+                                                </Button>
+                                            </Popconfirm>
+                                        </Space>
+                                    </>
+                                )}
                             </div>
                         )}
 
@@ -570,7 +507,7 @@ const LoanRequestManagement = ({ presetFilter, pageTitle }) => {
                     !isReturnsTab && (
                         <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-slate-500">
                             {isApprovalTab
-                                ? 'Chọn một phiếu chờ duyệt để nhập mã sách và xuất kho.'
+                                ? 'Chọn phiếu «chờ xác nhận yêu cầu» hoặc «chờ đến quầy» để xử lý.'
                                 : 'Chọn một phiếu đang mượn để xem chi tiết.'}
                         </div>
                     )

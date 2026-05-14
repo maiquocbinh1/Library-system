@@ -17,7 +17,7 @@ import {
     requestSendMassNotification,
 } from '../../config/request';
 import dayjs from 'dayjs';
-import { isPendingApproval } from '../../utils/loanTicketStatus';
+import { isPendingApproval, isReadyForPickup } from '../../utils/loanTicketStatus';
 import { compareByBookCodeAsc } from '../../utils/bookCodeSort';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -173,7 +173,7 @@ const Statistics = () => {
                         borrowDate: item?.borrowDate || null,
                         returnDate: item?.returnDate || null,
                     }))
-                    .filter((x) => isPendingApproval(x?.status)),
+                                                    .filter((x) => isPendingApproval(x?.status) || isReadyForPickup(x?.status)),
             );
         } finally {
             setPendingLoading(false);

@@ -13,6 +13,8 @@ const policyMongoSchema = new mongoose.Schema(
         },
         /** Số ấn phẩm tối đa được mượn cùng lúc */
         maxBooks: { type: Number, required: true, min: 1 },
+        /** Cùng một đầu sách (cùng bookId): tối đa bao nhiêu cuốn đang mượn/chờ duyệt — tránh một SV giữ hết kho một mã sách */
+        maxCopiesPerTitle: { type: Number, default: 2, min: 1 },
         /** Thời gian mượn tối đa (ngày) */
         loanDays: { type: Number, required: true, min: 1 },
         /** Số ngày cộng thêm mỗi lần gia hạn (kể từ hạn trả cũ). Quy định: 7 ngày, tối đa 1 lần/phiếu. */

@@ -26,9 +26,10 @@ import {
     requestReturnByBarcode,
     requestGetReturnsToday,
     requestStaffDeskIssue,
+    requestConfirmBorrow,
 } from '../../config/request';
 import { CIRCULATION_SAMPLE_STUDENT_IDS } from '../../constants/circulationSamplePatrons';
-import { isBorrowingActive } from '../../utils/loanTicketStatus';
+import { isBorrowingActive, isReadyForPickup } from '../../utils/loanTicketStatus';
 
 const { Text, Title } = Typography;
 
@@ -38,6 +39,14 @@ const SAMPLE_STUDENT_ID_SET = new Set(CIRCULATION_SAMPLE_STUDENT_IDS.map((s) => 
 
 function patronIdSet(p) {
     return new Set([String(p?.id || ''), String(p?._id || ''), String(p?.mysqlId || '')].filter(Boolean));
+}
+
+/** Khớp với API `confirm-borrow` / `findLoanByAnyId`: ưu tiên mysqlId phiếu, sau đó id client. */
+function loanTicketPublicId(t) {
+    if (!t) return '';
+    const m = t.mysqlId != null ? String(t.mysqlId).trim() : '';
+    if (m) return m;
+    return String(t.id || t._id || '').trim();
 }
 
 function countActiveBorrowCopies(patron, tickets) {
@@ -58,6 +67,68 @@ function formatVnd(n) {
 function isCalendarOverdue(dueDate) {
     if (!dueDate) return false;
     return dayjs(dueDate).startOf('day').isBefore(dayjs().startOf('day'));
+}
+
+/** Giỏ quầy: một dòng cho mỗi bản sao đã gán trong phiếu đặt online (READY_FOR_PICKUP). */
+function buildOnlinePickupCartRows(readyTickets) {
+    const list = Array.isArray(readyTickets) ? readyTickets : [];
+    let idx = 0;
+    const rows = [];
+    for (const t of list) {
+        const lid = loanTicketPublicId(t);
+        if (!lid) continue;
+        const fallbackTitle =
+            t?.product?.title || t?.product?.nameProduct || (t?.bookCopies || [])[0]?.title || '—';
+        const copies = (t?.bookCopies || []).filter((c) => String(c?.barcode || '').trim());
+        for (const c of copies) {
+            const bc = String(c.barcode).trim().toUpperCase();
+            if (!bc) continue;
+            const title = String(c.title || fallbackTitle || '—').trim() || '—';
+            rows.push({
+                key: `online-${lid}-${bc}`,
+                barcode: bc,
+                title,
+                bookId: String(c.bookId || t?.product?.id || ''),
+                loanTicketId: lid,
+                source: 'online_pickup',
+                accent: ACCENT[idx % ACCENT.length],
+            });
+            idx += 1;
+        }
+    }
+    return rows;
+}
+
+/** Giỏ chỉ toàn dòng online + mỗi phiếu khớp đủ mã RESERVED → trả về danh sách { lid } để confirm lần lượt. */
+function tryConfirmAllOnlineDeskTickets(cart, tickets, patron) {
+    if (!patron || !Array.isArray(cart) || !cart.length) return null;
+    if (!cart.every((r) => r.source === 'online_pickup' && String(r.loanTicketId || '').trim())) return null;
+
+    const ids = patronIdSet(patron);
+    const byLid = new Map();
+    for (const row of cart) {
+        const lid = String(row.loanTicketId).trim();
+        const bc = String(row.barcode || '').trim().toUpperCase();
+        if (!lid || !bc) return null;
+        if (!byLid.has(lid)) byLid.set(lid, []);
+        byLid.get(lid).push(bc);
+    }
+
+    const ops = [];
+    for (const [lid, gotRaw] of byLid) {
+        const t = (tickets || []).find((x) => loanTicketPublicId(x) === lid);
+        if (!t || !isReadyForPickup(t.status) || !ids.has(String(t.userId))) return null;
+        const reqQty = Number(t.requestedQuantity || t.quantity || 0);
+        const expected = (t.bookCopies || [])
+            .map((c) => String(c.barcode || '').trim().toUpperCase())
+            .filter(Boolean)
+            .sort();
+        const got = [...new Set(gotRaw)].sort();
+        if (!reqQty || expected.length !== reqQty || got.length !== reqQty) return null;
+        if (expected.join('\u0001') !== got.join('\u0001')) return null;
+        ops.push({ lid: loanTicketPublicId(t) });
+    }
+    return ops;
 }
 
 /** Số cuốn tối đa thêm một lần từ kho (đúng barcode AVAILABLE trong DB). */
@@ -225,6 +296,54 @@ const CirculationDesk = () => {
 
     const borrowingCount = useMemo(() => (patron ? countActiveBorrowCopies(patron, tickets) : 0), [patron, tickets]);
 
+    /** Phiếu đặt mượn web đã được thư viện gán bản RESERVED — chờ quầy hoàn tất mượn. */
+    const onlinePendingPickupForPatron = useMemo(() => {
+        if (!patron) return [];
+        const ids = patronIdSet(patron);
+        return tickets.filter((t) => {
+            if (!isReadyForPickup(t.status)) return false;
+            if (!ids.has(String(t.userId))) return false;
+            const reqQty = Number(t.requestedQuantity || t.quantity || 0);
+            if (!reqQty) return false;
+            const copies = (t.bookCopies || []).filter((c) => String(c.barcode || '').trim());
+            if (copies.length !== reqQty) return false;
+            return copies.every((c) => String(c.status || '').toUpperCase() === 'RESERVED');
+        });
+    }, [patron, tickets]);
+
+    /** Đồng bộ giỏ với phiếu online đã gán mã (tránh phụ thuộc reference mảng tickets). */
+    const onlineDeskCartSyncKey = useMemo(() => {
+        if (!patron || !onlinePendingPickupForPatron.length) return '';
+        const idPart = [...patronIdSet(patron)].sort().join('_');
+        const ticketPart = onlinePendingPickupForPatron
+            .map((t) => {
+                const lid = loanTicketPublicId(t);
+                const bcs = (t.bookCopies || [])
+                    .map((c) => String(c.barcode || '').trim().toUpperCase())
+                    .filter(Boolean)
+                    .sort()
+                    .join(',');
+                return `${lid}:${bcs}`;
+            })
+            .sort()
+            .join(';');
+        return `${idPart}|${ticketPart}`;
+    }, [patron, onlinePendingPickupForPatron]);
+
+    const patronHasOnlineDeskPickup = onlinePendingPickupForPatron.length > 0;
+
+    useEffect(() => {
+        if (!patron || mainTab !== 'lap') return;
+        if (onlinePendingPickupForPatron.length > 0) {
+            setCart(buildOnlinePickupCartRows(onlinePendingPickupForPatron));
+            return;
+        }
+        setCart((prev) => {
+            if (prev.length && prev.every((r) => r.source === 'online_pickup')) return [];
+            return prev;
+        });
+    }, [patron?.id, mainTab, onlineDeskCartSyncKey, onlinePendingPickupForPatron.length]);
+
     const renewPatronHasUnpaidFine = useMemo(() => {
         if (!renewPatron) return false;
         const ids = patronIdSet(renewPatron);
@@ -259,6 +378,12 @@ const CirculationDesk = () => {
             }
             if (patron.libraryCardBlocked) {
                 if (!silent) message.error('Thẻ độc giả đang khóa');
+                return;
+            }
+            if (onlinePendingPickupForPatron.length > 0) {
+                if (!silent) {
+                    message.info('Độc giả có phiếu đặt online chờ quầy — giỏ bên phải đã điền theo đúng mã đã gán.');
+                }
                 return;
             }
 
@@ -323,7 +448,7 @@ const CirculationDesk = () => {
                 setCartQuickFillBusy(false);
             }
         },
-        [patron, policyForPatron.maxBooks, borrowingCount, cartQuickFillRoom],
+        [patron, policyForPatron.maxBooks, borrowingCount, cartQuickFillRoom, onlinePendingPickupForPatron.length],
     );
 
     /**
@@ -337,6 +462,7 @@ const CirculationDesk = () => {
             return;
         }
         if (mainTab !== 'lap') return;
+        if (onlinePendingPickupForPatron.length > 0) return;
 
         const uid = String(patron.id);
         if (autoStockCartPatronRef.current.has(uid)) return;
@@ -354,7 +480,15 @@ const CirculationDesk = () => {
             void fillCartFromStock({ silent: true });
         }, 450);
         return () => clearTimeout(tid);
-    }, [patron, patron?.id, patron?.studentId, mainTab, searchParams, fillCartFromStock]);
+    }, [
+        patron,
+        patron?.id,
+        patron?.studentId,
+        mainTab,
+        searchParams,
+        fillCartFromStock,
+        onlinePendingPickupForPatron.length,
+    ]);
 
     const resolvePatron = async () => {
         const q = String(patronQuery || '').trim();
@@ -376,6 +510,7 @@ const CirculationDesk = () => {
                 message.error('Thẻ độc giả đang khóa');
                 return;
             }
+            setCart([]);
             setPatron(p);
             setShowSuggest(false);
             message.success('Đã chọn độc giả');
@@ -416,6 +551,10 @@ const CirculationDesk = () => {
             message.warning('Chọn độc giả trước');
             return;
         }
+        if (patronHasOnlineDeskPickup) {
+            message.info('Độc giả đang có phiếu đặt online chờ quầy — giỏ đã điền sẵn đúng tên sách và mã bản sao; không thêm mã khác tại bước này.');
+            return;
+        }
         if (patron.libraryCardBlocked) {
             message.error('Thẻ độc giả đang khóa');
             return;
@@ -428,7 +567,18 @@ const CirculationDesk = () => {
         try {
             const chk = await requestCheckBarcode(bc);
             const meta = chk?.metadata || {};
-            if (String(meta.status || '').toUpperCase() !== 'AVAILABLE') {
+            const st = String(meta.status || '').toUpperCase();
+            if (st === 'AVAILABLE') {
+                // ok
+            } else if (st === 'RESERVED') {
+                const allowed = onlinePendingPickupForPatron.some((t) =>
+                    (t.bookCopies || []).some((c) => String(c.barcode || '').trim().toUpperCase() === bc),
+                );
+                if (!allowed) {
+                    message.warning('Mã đang giữ chỗ — chỉ thêm được khi thuộc phiếu đặt online của độc giả này (bước khối vàng).');
+                    return;
+                }
+            } else {
                 message.warning(`Bản sao không sẵn sàng mượn (trạng thái: ${meta.status || '—'})`);
                 return;
             }
@@ -455,6 +605,27 @@ const CirculationDesk = () => {
         setCart((prev) => prev.filter((c) => c.key !== key));
     };
 
+    const findReadyTicketMatchingCart = useCallback(() => {
+        if (!patron || !cart.length) return null;
+        const ids = patronIdSet(patron);
+        const cartCodes = cart.map((c) => String(c.barcode || '').trim().toUpperCase()).filter(Boolean);
+        if (cartCodes.length !== cart.length) return null;
+        const cartSig = [...new Set(cartCodes)].sort().join('\u0001');
+        if ([...new Set(cartCodes)].length !== cartCodes.length) return null;
+        for (const t of tickets) {
+            if (!isReadyForPickup(t.status) || !ids.has(String(t.userId))) continue;
+            const reqQty = Number(t.requestedQuantity || t.quantity || 0);
+            const bcs = (t.bookCopies || [])
+                .map((c) => String(c.barcode || '').trim().toUpperCase())
+                .filter(Boolean)
+                .sort();
+            if (!reqQty || bcs.length !== reqQty) continue;
+            if (bcs.join('\u0001') !== cartSig || cartCodes.length !== reqQty) continue;
+            return t;
+        }
+        return null;
+    }, [patron, tickets, cart]);
+
     const submitLoan = async () => {
         if (!patron || !cart.length) return;
         if (borrowingCount + cart.length > policyForPatron.maxBooks) {
@@ -465,15 +636,39 @@ const CirculationDesk = () => {
         }
         setIssueBusy(true);
         try {
+            const onlineOps = tryConfirmAllOnlineDeskTickets(cart, tickets, patron);
+            if (onlineOps?.length) {
+                for (const { lid } of onlineOps) {
+                    await requestConfirmBorrow({ loanTicketId: lid, barcodes: [] });
+                }
+                message.success(
+                    onlineOps.length > 1
+                        ? `Đã hoàn tất ${onlineOps.length} phiếu đặt online. Sinh viên nhận thông báo «Mượn sách thành công».`
+                        : 'Đã hoàn tất mượn đặt online. Sinh viên nhận thông báo «Mượn sách thành công».',
+                );
+                setCart([]);
+                await loadBase();
+                return;
+            }
+
+            const readyMatch = findReadyTicketMatchingCart();
+            if (readyMatch) {
+                const lid = loanTicketPublicId(readyMatch);
+                await requestConfirmBorrow({ loanTicketId: lid, barcodes: [] });
+                message.success('Đã hoàn tất mượn đặt online. Sinh viên nhận thông báo «Mượn sách thành công».');
+                setCart([]);
+                await loadBase();
+                return;
+            }
             const res = await requestStaffDeskIssue({
                 userId: patron.id,
                 barcodes: cart.map((c) => c.barcode),
             });
-            const tickets = res?.metadata?.tickets || [];
+            const issuedTickets = res?.metadata?.tickets || [];
             const loanDays = res?.metadata?.loanDays ?? 14;
-            if (tickets.length > 1) {
+            if (issuedTickets.length > 1) {
                 message.success(
-                    `Đã tạo ${tickets.length} phiếu mượn (${cart.length} cuốn). Hạn trả: ${loanDays} ngày. Email xác nhận đã gửi.`,
+                    `Đã tạo ${issuedTickets.length} phiếu mượn (${cart.length} cuốn). Hạn trả: ${loanDays} ngày. Email xác nhận đã gửi.`,
                     5,
                 );
             } else {
@@ -482,7 +677,11 @@ const CirculationDesk = () => {
             setCart([]);
             await loadBase();
         } catch (e) {
-            message.error(e?.response?.data?.message || 'Không tạo được phiếu');
+            const msg =
+                e?.response?.data?.message ||
+                (typeof e?.message === 'string' && e.message) ||
+                'Không tạo được phiếu';
+            message.error(msg);
         } finally {
             setIssueBusy(false);
         }
@@ -554,11 +753,16 @@ const CirculationDesk = () => {
             title: '',
             key: 'act',
             width: 72,
-            render: (_, row) => (
-                <Button type="link" danger size="small" onClick={() => removeCart(row.key)}>
-                    Xóa
-                </Button>
-            ),
+            render: (_, row) =>
+                patronHasOnlineDeskPickup ? (
+                    <Text type="secondary" className="text-xs">
+                        —
+                    </Text>
+                ) : (
+                    <Button type="link" danger size="small" onClick={() => removeCart(row.key)}>
+                        Xóa
+                    </Button>
+                ),
         },
     ];
 
@@ -658,6 +862,7 @@ const CirculationDesk = () => {
                                                                 message.error('Thẻ độc giả đang khóa');
                                                                 return;
                                                             }
+                                                            setCart([]);
                                                             setPatronQuery(u.studentId || u.fullName || '');
                                                             setPatron(u);
                                                             setShowSuggest(false);
@@ -701,6 +906,31 @@ const CirculationDesk = () => {
                                         </Button>
                                     </div>
                                 )}
+                                {patron && onlinePendingPickupForPatron.length > 0 && (
+                                    <div className="mt-3 rounded-xl border border-sky-200/90 bg-sky-50/90 px-3 py-2.5 text-sm text-slate-800">
+                                        <div className="mb-1.5 font-semibold text-sky-950">Sinh viên đã đặt mượn online</div>
+                                        <ul className="mb-0 list-none space-y-2 pl-0">
+                                            {onlinePendingPickupForPatron.map((t) => {
+                                                const title =
+                                                    t.product?.title ||
+                                                    t.product?.nameProduct ||
+                                                    (t.bookCopies || [])[0]?.title ||
+                                                    '—';
+                                                const lid = loanTicketPublicId(t);
+                                                const codes = (t.bookCopies || [])
+                                                    .map((c) => String(c.barcode || '').trim())
+                                                    .filter(Boolean);
+                                                return (
+                                                    <li key={String(lid)} className="leading-relaxed">
+                                                        <span className="font-medium text-slate-900">{title}</span>
+                                                        <span className="text-slate-600"> — Bản sao: </span>
+                                                        <span className="font-mono text-[13px] text-slate-800">{codes.join(', ')}</span>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    </div>
+                                )}
                             </div>
 
                             <div>
@@ -719,7 +949,7 @@ const CirculationDesk = () => {
                                         className="rounded-xl border-slate-700 bg-slate-900 font-mono text-white placeholder:text-slate-400"
                                         placeholder="Nhập mã bản sao"
                                         value={bookInput}
-                                        disabled={!patron}
+                                        disabled={!patron || patronHasOnlineDeskPickup}
                                         onChange={(e) => setBookInput(e.target.value.toUpperCase())}
                                         onPressEnter={addBookFromInput}
                                     />
@@ -727,7 +957,7 @@ const CirculationDesk = () => {
                                         type="primary"
                                         className="rounded-xl border-0 bg-emerald-500 px-4 shadow-sm hover:bg-emerald-600"
                                         icon={<PlusOutlined />}
-                                        disabled={!patron}
+                                        disabled={!patron || patronHasOnlineDeskPickup}
                                         onClick={addBookFromInput}
                                     >
                                         Thêm
@@ -736,7 +966,16 @@ const CirculationDesk = () => {
                                 <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
                                     <BarcodeOutlined className="mt-0.5 text-lg text-slate-400" />
                                     <span>
-                                        Gõ mã bản sao vào ô trên, nhấn <strong>Enter</strong> hoặc bấm <strong>Thêm</strong>.
+                                        {patronHasOnlineDeskPickup ? (
+                                            <>
+                                                Độc giả có phiếu đặt online chờ quầy — <strong>giỏ bên phải đã điền sẵn</strong> đúng tên sách
+                                                và mã bản sao. Bước này tạm khóa để tránh trộn với mượn quét tay thường.
+                                            </>
+                                        ) : (
+                                            <>
+                                                Gõ mã bản sao vào ô trên, nhấn <strong>Enter</strong> hoặc bấm <strong>Thêm</strong>.
+                                            </>
+                                        )}
                                     </span>
                                 </div>
                             </div>
@@ -761,6 +1000,12 @@ const CirculationDesk = () => {
                                             {formatVnd(policyForPatron.overdueFinePerDay)}/ngày
                                         </span>
                                     </div>
+                                    {patronHasOnlineDeskPickup ? (
+                                        <div className="mt-2 rounded-lg border border-indigo-100 bg-indigo-50/80 px-2.5 py-2 text-xs text-indigo-950">
+                                            Giỏ bên phải đã khớp phiếu đặt online. Bấm nút dưới để <strong>hoàn tất mượn</strong> (xuất kho, tạo
+                                            phiếu) và gửi xác nhận cho sinh viên.
+                                        </div>
+                                    ) : null}
                                 </div>
                                 <Button
                                     type="primary"
@@ -771,7 +1016,9 @@ const CirculationDesk = () => {
                                     disabled={!canSubmitLoan}
                                     onClick={submitLoan}
                                 >
-                                    Tạo phiếu mượn &amp; Gửi email xác nhận
+                                    {patronHasOnlineDeskPickup
+                                        ? 'Hoàn tất mượn & tạo phiếu (đặt online)'
+                                        : 'Tạo phiếu mượn & Gửi email xác nhận'}
                                 </Button>
                             </div>
                         </div>
@@ -941,7 +1188,12 @@ const CirculationDesk = () => {
                 >
                     {mainTab === 'lap' && (
                         <>
-                            {showCartQuickFill && patron ? (
+                            {patron && onlinePendingPickupForPatron.length > 0 && (
+                                <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                                    Danh sách bên dưới khớp phiếu đặt online. Hoàn tất tại <strong>bước 3</strong> bên trái.
+                                </div>
+                            )}
+                            {showCartQuickFill && patron && !patronHasOnlineDeskPickup ? (
                                 <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
                                     <Button
                                         type="default"

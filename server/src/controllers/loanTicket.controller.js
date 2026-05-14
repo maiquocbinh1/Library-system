@@ -6,6 +6,7 @@ const UserMongo = require('../models/user.mongo.model');
 const BookMongo = require('../models/book.mongo.model');
 const BookCopyMongo = require('../models/bookCopy.mongo.model');
 const CirculationReturnEventMongo = require('../models/circulationReturnEvent.mongo.model');
+const NotificationMongo = require('../models/notification.mongo.model');
 
 const { BadRequestError } = require('../core/error.response');
 const { OK, Created } = require('../core/success.response');
@@ -99,7 +100,7 @@ function toClientBookEmbedded(book) {
 function toClientLoan(ticketDoc, extras = {}) {
     const raw = ticketDoc.toObject ? ticketDoc.toObject() : { ...ticketDoc };
     // PENDING: dùng requestedQuantity; các trạng thái khác: đếm bản sao thực tế
-    const q = raw.status === 'PENDING_APPROVAL'
+    const q = raw.status === 'PENDING_APPROVAL' || raw.status === 'READY_FOR_PICKUP'
         ? (raw.requestedQuantity || 0)
         : copyIdsForTicketHistory(raw).length;
     return {
@@ -186,6 +187,54 @@ async function countUnpaidFinesForUser(user) {
     return FineTicketMongo.countDocuments({ userId: { $in: userIds }, status: 'UNPAID' });
 }
 
+async function assertPatronHasNoUnpaidFines(user) {
+    const n = await countUnpaidFinesForUser(user);
+    if (n > 0) {
+        throw new BadRequestError('Bạn phải thanh toán nợ phạt trước khi mượn sách mới!');
+    }
+}
+
+/**
+ * Giữ chỗ: AVAILABLE → RESERVED (tuần tự, không dùng transaction — tương thích Mongo standalone).
+ * Nếu tạo phiếu thất bại sau bước này, caller phải gọi releaseReservedCopyIds.
+ * @returns {Promise<mongoose.Types.ObjectId[]>}
+ */
+async function reserveAvailableCopyIds(bookObjectId, quantityNumber) {
+    const ids = [];
+    try {
+        for (let i = 0; i < quantityNumber; i += 1) {
+            const doc = await BookCopyMongo.findOneAndUpdate(
+                { bookId: bookObjectId, status: 'AVAILABLE' },
+                { $set: { status: 'RESERVED' } },
+                { new: true },
+            )
+                .select('_id')
+                .lean();
+            if (!doc) {
+                if (i === 0) {
+                    throw new BadRequestError('Sách đã được mượn hết — không còn bản sẵn sàng trong kho.');
+                }
+                throw new BadRequestError(
+                    `Không đủ sách để giữ chỗ (chỉ còn ${i} bản sẵn sàng, cần ${quantityNumber}).`,
+                );
+            }
+            ids.push(doc._id);
+        }
+        return ids;
+    } catch (e) {
+        await releaseReservedCopyIds(ids);
+        throw e;
+    }
+}
+
+async function releaseReservedCopyIds(copyIds) {
+    if (!copyIds?.length) return;
+    await BookCopyMongo.updateMany(
+        { _id: { $in: copyIds }, status: 'RESERVED' },
+        { $set: { status: 'AVAILABLE' } },
+    );
+}
+
 /**
  * Tổng số lượng sách sinh viên đang giữ + chờ duyệt.
  * PENDING → dùng requestedQuantity; BORROWING/OVERDUE → đếm bản sao thực tế.
@@ -195,7 +244,7 @@ async function getActiveBorrowTotalQuantity(user) {
 
     const pendingRows = await LoanTicketMongo.find({
         userId: { $in: userIds },
-        status: 'PENDING_APPROVAL',
+        status: { $in: ['PENDING_APPROVAL', 'READY_FOR_PICKUP'] },
     }).select('requestedQuantity').lean();
     const pendingQty = pendingRows.reduce((s, r) => s + (r.requestedQuantity || 0), 0);
 
@@ -206,6 +255,61 @@ async function getActiveBorrowTotalQuantity(user) {
     const activeQty = activeRows.reduce((s, r) => s + (Array.isArray(r.bookCopyIds) ? r.bookCopyIds.length : 0), 0);
 
     return pendingQty + activeQty;
+}
+
+/**
+ * Số cuốn cùng một đầu sách (bookId) đang chờ duyệt + đang mượn/quá hạn.
+ */
+/**
+ * @param {{ excludeLoanMongoId?: import('mongoose').Types.ObjectId | string }} [options]
+ *   excludeLoanMongoId — khi xác nhận một phiếu, bỏ phiếu đó khỏi phần «chờ» để không tự cộng trùng với số sắp xuất kho.
+ */
+async function getActiveBorrowQuantityForBook(user, bookObjectId, options = {}) {
+    const userIds = getUserIdCandidates(user);
+    const bid = bookObjectId != null ? String(bookObjectId) : '';
+    if (!bid || !mongoose.isValidObjectId(bid)) return 0;
+    const oid = new mongoose.Types.ObjectId(bid);
+
+    const ex = options.excludeLoanMongoId;
+    const pendingFilter = {
+        userId: { $in: userIds },
+        status: { $in: ['PENDING_APPROVAL', 'READY_FOR_PICKUP'] },
+        bookId: oid,
+    };
+    if (ex != null && String(ex).trim() && mongoose.isValidObjectId(String(ex))) {
+        pendingFilter._id = { $ne: new mongoose.Types.ObjectId(String(ex)) };
+    }
+
+    const pendingRows = await LoanTicketMongo.find(pendingFilter).select('requestedQuantity').lean();
+    const pendingQty = pendingRows.reduce((s, r) => s + (r.requestedQuantity || 0), 0);
+
+    const activeRows = await LoanTicketMongo.find({
+        userId: { $in: userIds },
+        status: { $in: ['BORROWING', 'OVERDUE'] },
+        bookId: oid,
+    })
+        .select('bookCopyIds')
+        .lean();
+    const activeQty = activeRows.reduce(
+        (s, r) => s + (Array.isArray(r.bookCopyIds) ? r.bookCopyIds.length : 0),
+        0,
+    );
+
+    return pendingQty + activeQty;
+}
+
+function effectiveMaxCopiesPerTitle(policy) {
+    const raw = Number(policy?.maxCopiesPerTitle);
+    return Number.isFinite(raw) && raw >= 1 ? raw : 2;
+}
+
+/** Tối đa 8 cuốn (đang mượn + chờ duyệt); nội quy maxBooks có thể thấp hơn. */
+const PATRON_TOTAL_BOOKS_SYSTEM_CAP = 8;
+
+function effectiveMaxBorrowBooks(policy) {
+    const raw = Number(policy?.maxBooks);
+    const policyCap = Number.isFinite(raw) && raw > 0 ? raw : PATRON_TOTAL_BOOKS_SYSTEM_CAP;
+    return Math.min(PATRON_TOTAL_BOOKS_SYSTEM_CAP, policyCap);
 }
 
 async function hasOverdueBorrow(user) {
@@ -353,27 +457,88 @@ async function executeReturnOneBarcode(inputBarcode, req) {
 }
 
 /**
- * Xuất kho: phiếu PENDING_APPROVAL → BORROWING, gắn bản sao theo đúng barcode.
- * @param {import('mongoose').Document} ticket — document đã có bookId, requestedQuantity
- * @param {string[]} trimmedBarcodes — độ dài = ticket.requestedQuantity
+ * Xuất kho: phiếu READY_FOR_PICKUP (đã giữ chỗ) hoặc phiếu PENDING + nhập mã AVAILABLE (quầy).
+ * @param {import('mongoose').Document} ticket
+ * @param {string[]} trimmedBarcodes
+ * @param {{ sendBorrowEmail?: boolean, notifyBorrowerInApp?: boolean, pickupCompleteNotification?: boolean }} [opts]
  */
-async function applyConfirmBorrowToPendingTicket(ticket, trimmedBarcodes) {
-    if (ticket.status !== 'PENDING_APPROVAL') throw new BadRequestError('Phiếu không ở trạng thái chờ duyệt');
+async function applyConfirmBorrowToPendingTicket(ticket, trimmedBarcodes, opts = {}) {
+    const sendBorrowEmail = opts.sendBorrowEmail !== false;
+    const notifyBorrowerInApp = Boolean(opts.notifyBorrowerInApp);
+    const pickupCompleteNotification = Boolean(opts.pickupCompleteNotification);
+
+    if (!['PENDING_APPROVAL', 'READY_FOR_PICKUP'].includes(ticket.status)) {
+        throw new BadRequestError('Phiếu không ở trạng thái cho phép xuất kho (chờ quầy hoặc chờ nhận sách).');
+    }
     if (!ticket.bookId) throw new BadRequestError('Phiếu không có thông tin đầu sách');
-    if (trimmedBarcodes.length !== ticket.requestedQuantity) {
-        throw new BadRequestError(
-            `Cần đúng ${ticket.requestedQuantity} mã vạch, hiện có ${trimmedBarcodes.length}`,
-        );
+
+    const reqN = Number(ticket.requestedQuantity || 0);
+    if (!Number.isFinite(reqN) || reqN <= 0) {
+        throw new BadRequestError('Phiếu không có số lượng mượn hợp lệ');
     }
 
-    const copies = await BookCopyMongo.find({ barcode: { $in: trimmedBarcodes } });
-    const foundBarcodes = copies.map((c) => c.barcode);
-    const notFound = trimmedBarcodes.filter((b) => !foundBarcodes.includes(b));
-    if (notFound.length > 0) throw new BadRequestError(`Mã vạch không tồn tại trong hệ thống: ${notFound.join(', ')}`);
+    const reservedIdsRaw = Array.isArray(ticket.bookCopyIds) ? ticket.bookCopyIds : [];
+    const reservedIdsClean = [
+        ...new Set(
+            reservedIdsRaw
+                .filter((id) => id != null && String(id).trim() !== '')
+                .map((id) => String(id))
+                .filter((id) => mongoose.isValidObjectId(id)),
+        ),
+    ];
+    const reservedSet = new Set(reservedIdsRaw.filter((id) => id != null && String(id).trim() !== '').map((id) => String(id)));
+    /** Phiếu READY + body không gửi barcode: dùng đúng N ObjectId bản sao đã giữ chỗ (bỏ null/trùng trong mảng). */
+    const canAutoCheckoutReserved =
+        ticket.status === 'READY_FOR_PICKUP' &&
+        trimmedBarcodes.length === 0 &&
+        reqN > 0 &&
+        reservedIdsClean.length === reqN;
 
-    const notAvailable = copies.filter((c) => c.status !== 'AVAILABLE');
-    if (notAvailable.length > 0) {
-        throw new BadRequestError(`Các mã vạch đang không sẵn sàng: ${notAvailable.map((c) => c.barcode).join(', ')}`);
+    let copies;
+
+    if (canAutoCheckoutReserved) {
+        copies = await BookCopyMongo.find({ _id: { $in: reservedIdsClean.map((id) => new mongoose.Types.ObjectId(id)) } });
+        if (copies.length !== reqN) {
+            throw new BadRequestError('Dữ liệu phiếu không khớp số bản đã giữ chỗ — vui lòng liên hệ quản trị.');
+        }
+        const notReserved = copies.filter((c) => c.status !== 'RESERVED');
+        if (notReserved.length > 0) {
+            throw new BadRequestError(
+                `Các mã không còn ở trạng thái giữ chỗ (RESERVED): ${notReserved.map((c) => c.barcode).join(', ')}`,
+            );
+        }
+    } else {
+        if (trimmedBarcodes.length !== reqN) {
+            throw new BadRequestError(`Cần đúng ${reqN} mã vạch, hiện có ${trimmedBarcodes.length}`);
+        }
+
+        copies = await BookCopyMongo.find({ barcode: { $in: trimmedBarcodes } });
+        const foundBarcodes = copies.map((c) => c.barcode);
+        const notFound = trimmedBarcodes.filter((b) => !foundBarcodes.includes(b));
+        if (notFound.length > 0) throw new BadRequestError(`Mã vạch không tồn tại trong hệ thống: ${notFound.join(', ')}`);
+
+        const useReservedFlow =
+            reservedSet.size > 0 && reservedSet.size === reqN && reservedSet.size === trimmedBarcodes.length;
+
+        if (useReservedFlow) {
+            const notInHold = copies.filter((c) => !reservedSet.has(String(c._id)));
+            if (notInHold.length > 0) {
+                throw new BadRequestError(
+                    `Mã vạch phải trùng đúng các bản đã giữ cho phiếu: ${notInHold.map((c) => c.barcode).join(', ')}`,
+                );
+            }
+            const notReserved = copies.filter((c) => c.status !== 'RESERVED');
+            if (notReserved.length > 0) {
+                throw new BadRequestError(
+                    `Các mã vạch không ở trạng thái đang giữ chỗ (RESERVED): ${notReserved.map((c) => c.barcode).join(', ')}`,
+                );
+            }
+        } else {
+            const notAvailable = copies.filter((c) => c.status !== 'AVAILABLE');
+            if (notAvailable.length > 0) {
+                throw new BadRequestError(`Các mã vạch đang không sẵn sàng: ${notAvailable.map((c) => c.barcode).join(', ')}`);
+            }
+        }
     }
 
     const wrongBook = copies.filter((c) => String(c.bookId) !== String(ticket.bookId));
@@ -384,6 +549,16 @@ async function applyConfirmBorrowToPendingTicket(ticket, trimmedBarcodes) {
     const borrower = await findUserByAnyId(ticket.userId);
     if (!borrower) throw new BadRequestError('Không tìm thấy người mượn');
     const policy = await getBorrowPolicyForUser(borrower);
+
+    const perTitleMaxConf = effectiveMaxCopiesPerTitle(policy);
+    const currentForTitle = await getActiveBorrowQuantityForBook(borrower, ticket.bookId, {
+        excludeLoanMongoId: ticket._id,
+    });
+    if (currentForTitle + reqN > perTitleMaxConf) {
+        throw new BadRequestError(
+            `Không xuất kho: vượt quá ${perTitleMaxConf} cuốn cùng đầu sách/người theo chính sách (đang có ${currentForTitle} cuốn khác + yêu cầu ${reqN} cuốn). Vui lòng từ chối hoặc điều chỉnh phiếu.`,
+        );
+    }
 
     const due = new Date();
     due.setHours(0, 0, 0, 0);
@@ -402,11 +577,47 @@ async function applyConfirmBorrowToPendingTicket(ticket, trimmedBarcodes) {
     const book = await findBookByAnyId(String(ticket.bookId));
     if (book) await syncBookInventoryFields(book._id);
 
-    try {
-        if (borrower?.email && book) {
-            await SendMailBookBorrowConfirmation(borrower.email, toClientBookEmbedded(book), ticket.borrowDate, ticket.dueDate);
+    if (sendBorrowEmail) {
+        try {
+            if (borrower?.email && book) {
+                await SendMailBookBorrowConfirmation(borrower.email, toClientBookEmbedded(book), ticket.borrowDate, ticket.dueDate);
+            }
+        } catch { /* không chặn nếu email lỗi */ }
+    }
+
+    if (notifyBorrowerInApp && borrower) {
+        const title = book ? book.title || book.nameProduct || 'Sách' : 'Sách';
+        const dueStr = due.toLocaleDateString('vi-VN');
+        const safeTitle = String(title || 'Sách')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        const barcodeLine = copies.map((c) => String(c.barcode || '').trim()).filter(Boolean).join(', ');
+        try {
+            await NotificationMongo.create({
+                mysqlId: random36(),
+                userId: String(borrower._id),
+                type: 'INFO',
+                title: pickupCompleteNotification ? 'Mượn sách thành công' : 'Phiếu mượn đã được duyệt',
+                contentHtml: pickupCompleteNotification
+                    ? `<p>Bạn đã hoàn tất nhận sách tại quầy thư viện.</p><p><strong>${safeTitle}</strong></p><p>Hạn trả: <strong>${dueStr}</strong>.</p>${
+                          barcodeLine ? `<p>Mã bản sao: <span class="font-mono">${barcodeLine}</span>.</p>` : ''
+                      }`
+                    : `<p>Yêu cầu mượn sách từ web đã được thư viện xác nhận xuất kho.</p><p><strong>${safeTitle}</strong></p><p>Hạn trả: <strong>${dueStr}</strong>.</p>`,
+                dedupeKey: pickupCompleteNotification
+                    ? `loan_borrowed_${String(ticket._id)}`
+                    : `loan_confirm_${String(ticket._id)}`,
+                meta: {
+                    loanTicketId: String(ticket.mysqlId || ticket._id),
+                    barcodes: copies.map((c) => c.barcode),
+                    dueDate: due,
+                },
+            });
+        } catch (e) {
+            console.error('[applyConfirmBorrowToPendingTicket] in-app notification:', e?.message || e);
         }
-    } catch { /* không chặn nếu email lỗi */ }
+    }
 
     return { ticket, book, copies, due };
 }
@@ -415,9 +626,8 @@ async function applyConfirmBorrowToPendingTicket(ticket, trimmedBarcodes) {
 
 class loanTicketController {
     /**
-     * [BƯỚC 2] Sinh viên đặt mượn online.
-     * Chỉ kiểm tra tồn kho, KHÔNG giữ chỗ bản sao.
-     * bookCopyIds để rỗng — thủ thư điền khi confirm-borrow.
+     * [BƯỚC 2] Sinh viên đặt mượn online — chỉ tạo phiếu chờ duyệt (chưa giữ chỗ bản sao).
+     * Giữ chỗ + thông báo đến quầy: thủ thư gọi notify-pickup.
      */
     async createHistoryBook(req, res) {
         const { id } = req.user;
@@ -426,12 +636,21 @@ class loanTicketController {
         if (!canBorrowAsPatron(user)) throw new BadRequestError('Bạn chưa có MSV hợp lệ hoặc đang chờ thư viện xác nhận');
 
         const borrowPolicy = await getBorrowPolicyForUser(user);
+        await assertPatronHasNoUnpaidFines(user);
         const overdueBorrow = await hasOverdueBorrow(user);
         if (overdueBorrow) throw new BadRequestError('Bạn đang có sách quá hạn chưa trả, vui lòng hoàn tất trước khi mượn thêm');
 
-        const { fullName, phoneNumber, address, bookId, borrowDate, quantity } = req.body;
-        if (!fullName || !phoneNumber || !address || !bookId || !quantity) {
-            throw new BadRequestError('Vui lòng nhập đầy đủ thông tin');
+        const { bookId, borrowDate, quantity } = req.body;
+        /** Luôn lấy từ hồ sơ tài khoản (SV nội bộ) — không tin payload tên/SĐT/địa chỉ. */
+        const fullName = String(user.fullName || '').trim();
+        const phoneNumber = String(user.phone || '').trim();
+        const address = String(user.address || '').trim();
+        if (!fullName) {
+            throw new BadRequestError('Hồ sơ chưa có họ tên. Vui lòng cập nhật tại trang cá nhân trước khi đặt mượn.');
+        }
+        /** SĐT không bắt buộc khi mượn online (nhận sách tại quầy). */
+        if (!bookId || quantity == null || quantity === '') {
+            throw new BadRequestError('Vui lòng chọn sách và số lượng mượn');
         }
 
         const quantityNumber = Number(quantity);
@@ -440,9 +659,10 @@ class loanTicketController {
         }
 
         const activeBorrowQty = await getActiveBorrowTotalQuantity(user);
-        if (activeBorrowQty + quantityNumber > borrowPolicy.maxBooks) {
+        const maxAllowed = effectiveMaxBorrowBooks(borrowPolicy);
+        if (activeBorrowQty + quantityNumber > maxAllowed) {
             throw new BadRequestError(
-                `Bạn chỉ được mượn tối đa ${borrowPolicy.maxBooks} ấn phẩm (đang giữ ${activeBorrowQty}, yêu cầu thêm ${quantityNumber})`,
+                `Không mượn được: tổng sách đang mượn hoặc chờ duyệt (${activeBorrowQty} cuốn) và số lượng yêu cầu (${quantityNumber}) vượt quá ${maxAllowed} cuốn theo quy định.`,
             );
         }
 
@@ -452,47 +672,157 @@ class loanTicketController {
         const existedBook = await findBookByAnyId(bookId);
         if (!existedBook) throw new BadRequestError('Sách không tồn tại');
 
-        // Kiểm tra tồn kho (KHÔNG giữ chỗ)
-        const availableCount = await BookCopyMongo.countDocuments({ bookId: existedBook._id, status: 'AVAILABLE' });
-        if (availableCount < quantityNumber) {
-            throw new BadRequestError(`Không đủ sách vật lý sẵn sàng (hiện có ${availableCount} bản, bạn cần ${quantityNumber})`);
+        const perTitleMax = effectiveMaxCopiesPerTitle(borrowPolicy);
+        const alreadyThisTitle = await getActiveBorrowQuantityForBook(user, existedBook._id);
+        if (alreadyThisTitle + quantityNumber > perTitleMax) {
+            const titleHint = existedBook.title || existedBook.nameProduct || 'đầu sách này';
+            throw new BadRequestError(
+                `Không mượn được: với mỗi đầu sách bạn chỉ được mượn tối đa ${perTitleMax} cuốn cùng lúc (đầu sách «${titleHint}»: đang có ${alreadyThisTitle} cuốn, yêu cầu thêm ${quantityNumber}).`,
+            );
         }
 
         const ticket = await LoanTicketMongo.create({
             mysqlId: random36(),
             fullName,
-            phone: phoneNumber,
+            phone: phoneNumber || null,
             address,
             borrowDate: borrowDateValue,
             dueDate: null,
             userId: String(user._id),
             bookId: existedBook._id,
             requestedQuantity: quantityNumber,
-            bookCopyIds: [],          // Thủ thư sẽ điền khi xuất kho
+            bookCopyIds: [],
             status: 'PENDING_APPROVAL',
         });
-
+        await syncBookInventoryFields(existedBook._id);
         new Created({
-            message: 'Đặt mượn thành công. Vui lòng đến thư viện nhận sách.',
+            message:
+                'Đã ghi nhận yêu cầu mượn. Khi thư viện xác nhận, bạn sẽ nhận thông báo đến quầy lấy sách (hệ thống sẽ gán sẵn mã bản sao).',
             metadata: toClientLoan(ticket, { product: toClientBookEmbedded(existedBook) }),
         }).send(res);
     }
 
     /**
-     * [BƯỚC 3] Thủ thư xác nhận xuất kho — gõ barcode từng cuốn vật lý.
+     * Thủ thư xác nhận yêu cầu đặt mượn: gán N bản RESERVED + chuyển phiếu sang chờ đến quầy + thông báo SV.
+     * PUT /api/history-book/notify-pickup  body: { loanTicketId }
+     */
+    async notifyPickupReserve(req, res) {
+        const { loanTicketId } = req.body || {};
+        if (!loanTicketId) throw new BadRequestError('Thiếu loanTicketId');
+
+        const ticket = await findLoanByAnyId(loanTicketId);
+        if (!ticket) throw new BadRequestError('Không tìm thấy phiếu mượn');
+        if (ticket.status !== 'PENDING_APPROVAL') {
+            throw new BadRequestError('Chỉ xác nhận được phiếu đang chờ duyệt yêu cầu (chưa gán sách).');
+        }
+
+        const existedBook = await findBookByAnyId(ticket.bookId);
+        if (!existedBook) throw new BadRequestError('Không tìm thấy đầu sách');
+
+        const qty = Number(ticket.requestedQuantity || 0);
+        if (!Number.isFinite(qty) || qty <= 0) throw new BadRequestError('Phiếu không có số lượng mượn hợp lệ');
+
+        const existingIds = (Array.isArray(ticket.bookCopyIds) ? ticket.bookCopyIds : []).filter(Boolean);
+        let idsToReleaseOnError = [];
+
+        try {
+            if (!existingIds.length) {
+                const reservedIds = await reserveAvailableCopyIds(existedBook._id, qty);
+                ticket.bookCopyIds = reservedIds;
+                idsToReleaseOnError = reservedIds;
+            } else {
+                if (existingIds.length !== qty) {
+                    throw new BadRequestError('Dữ liệu bản sao trên phiếu không khớp số lượng mượn');
+                }
+                const copiesCheck = await BookCopyMongo.find({ _id: { $in: existingIds } });
+                if (copiesCheck.length !== qty) throw new BadRequestError('Không tìm thấy đủ bản sao đã liên kết phiếu');
+                const bad = copiesCheck.filter(
+                    (c) => c.status !== 'RESERVED' || String(c.bookId) !== String(ticket.bookId),
+                );
+                if (bad.length) {
+                    throw new BadRequestError('Một hoặc nhiều bản trên phiếu không còn trạng thái giữ chỗ hợp lệ');
+                }
+            }
+
+            ticket.status = 'READY_FOR_PICKUP';
+            await ticket.save();
+            idsToReleaseOnError = [];
+            await syncBookInventoryFields(existedBook._id);
+
+            const borrower = await findUserByAnyId(ticket.userId);
+            const copies = await BookCopyMongo.find({ _id: { $in: ticket.bookCopyIds } }).lean();
+            const barcodes = copies.map((c) => String(c.barcode || '').trim().toUpperCase()).filter(Boolean);
+            const title = existedBook.title || existedBook.nameProduct || 'Sách';
+            const safeTitle = String(title)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+            const safeCodes = barcodes
+                .map((b) =>
+                    String(b)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;'),
+                )
+                .join(', ');
+
+            if (borrower) {
+                try {
+                    await NotificationMongo.create({
+                        mysqlId: random36(),
+                        userId: String(borrower._id),
+                        type: 'INFO',
+                        title: 'Đến thư viện để lấy sách',
+                        contentHtml:
+                            '<p>Thư viện đã chấp nhận yêu cầu mượn của bạn.</p>' +
+                            `<p><strong>${safeTitle}</strong> (${qty} cuốn).</p>` +
+                            '<p>Vui lòng đến <strong>quầy mượn — trả sách</strong> để nhận đúng các cuốn có mã:</p>' +
+                            `<p style="font-family:monospace;font-weight:600">${safeCodes}</p>`,
+                        dedupeKey: `loan_ready_${String(ticket._id)}`,
+                        meta: { loanTicketId: String(ticket.mysqlId || ticket._id), barcodes },
+                    });
+                } catch (e) {
+                    console.error('[notifyPickupReserve] notification:', e?.message || e);
+                }
+            }
+
+            const fresh = await findLoanByAnyId(loanTicketId);
+            new OK({
+                message: 'Đã gán bản sao và gửi thông báo cho sinh viên đến thư viện nhận sách.',
+                metadata: {
+                    ticket: toClientLoan(fresh, { product: toClientBookEmbedded(existedBook) }),
+                    barcodes,
+                },
+            }).send(res);
+        } catch (err) {
+            if (idsToReleaseOnError.length) await releaseReservedCopyIds(idsToReleaseOnError);
+            if (existedBook?._id) await syncBookInventoryFields(existedBook._id);
+            throw err;
+        }
+    }
+
+    /**
+     * Hoàn tất xuất kho: phiếu READY_FOR_PICKUP (đã giữ chỗ) hoặc phiếu PENDING + mã AVAILABLE (quầy).
      * PUT /api/history-book/confirm-borrow
-     * Body: { loanTicketId, barcodes: ["DNT-01", "DNT-02"] }
+     * Body: { loanTicketId, barcodes?: [] }
      */
     async confirmBorrow(req, res) {
         const { loanTicketId, barcodes } = req.body;
         if (!loanTicketId) throw new BadRequestError('Thiếu loanTicketId');
-        if (!Array.isArray(barcodes) || !barcodes.length) throw new BadRequestError('Vui lòng nhập ít nhất một mã sách');
 
         const ticket = await findLoanByAnyId(loanTicketId);
         if (!ticket) throw new BadRequestError('Không tìm thấy phiếu mượn');
 
-        const trimmedBarcodes = barcodes.map((b) => String(b || '').trim()).filter(Boolean);
-        const { ticket: t2, book, copies, due } = await applyConfirmBorrowToPendingTicket(ticket, trimmedBarcodes);
+        const trimmedBarcodes = Array.isArray(barcodes)
+            ? barcodes.map((b) => String(b || '').trim()).filter(Boolean)
+            : [];
+
+        const { ticket: t2, book, copies, due } = await applyConfirmBorrowToPendingTicket(ticket, trimmedBarcodes, {
+            sendBorrowEmail: false,
+            notifyBorrowerInApp: true,
+            pickupCompleteNotification: true,
+        });
 
         new OK({
             message: `Xuất kho thành công ${copies.length} cuốn. Hạn trả: ${due.toLocaleDateString('vi-VN')}`,
@@ -517,15 +847,17 @@ class loanTicketController {
         if (!patron) throw new BadRequestError('Không tìm thấy độc giả');
         if (!canBorrowAsPatron(patron)) throw new BadRequestError('Độc giả không đủ điều kiện mượn');
         if (await hasOverdueBorrow(patron)) throw new BadRequestError('Độc giả đang có sách quá hạn chưa trả');
+        await assertPatronHasNoUnpaidFines(patron);
 
         const policy = await getBorrowPolicyForUser(patron);
         const trimmed = [...new Set(barcodes.map((b) => String(b || '').trim()).filter(Boolean))];
         if (!trimmed.length) throw new BadRequestError('Thiếu danh sách mã vạch');
 
         const activeBorrowQty = await getActiveBorrowTotalQuantity(patron);
-        if (activeBorrowQty + trimmed.length > policy.maxBooks) {
+        const maxAllowedDesk = effectiveMaxBorrowBooks(policy);
+        if (activeBorrowQty + trimmed.length > maxAllowedDesk) {
             throw new BadRequestError(
-                `Vượt giới hạn mượn: tối đa ${policy.maxBooks} ấn phẩm (đang giữ/chờ ${activeBorrowQty}, thêm ${trimmed.length})`,
+                `Không mượn được: tổng sách đang mượn hoặc chờ duyệt (${activeBorrowQty} cuốn) và số lượng xuất (${trimmed.length}) vượt quá ${maxAllowedDesk} cuốn theo quy định.`,
             );
         }
 
@@ -544,6 +876,20 @@ class loanTicketController {
             const bid = String(c.bookId);
             if (!byBook.has(bid)) byBook.set(bid, []);
             byBook.get(bid).push(c);
+        }
+
+        const perTitleMaxDesk = effectiveMaxCopiesPerTitle(policy);
+        for (const [, copyList] of byBook) {
+            const existedBook = await findBookByAnyId(String(copyList[0].bookId));
+            if (!existedBook) throw new BadRequestError('Lỗi dữ liệu đầu sách');
+            const qty = copyList.length;
+            const alreadyThisTitle = await getActiveBorrowQuantityForBook(patron, existedBook._id);
+            if (alreadyThisTitle + qty > perTitleMaxDesk) {
+                const titleHint = existedBook.title || existedBook.nameProduct || existedBook._id;
+                throw new BadRequestError(
+                    `Không mượn được: đầu sách «${titleHint}» — tối đa ${perTitleMaxDesk} cuốn/người (đang có ${alreadyThisTitle}, yêu cầu xuất ${qty}).`,
+                );
+            }
         }
 
         const issued = [];
@@ -570,7 +916,11 @@ class loanTicketController {
                 status: 'PENDING_APPROVAL',
             });
 
-            const { ticket: saved, book, due } = await applyConfirmBorrowToPendingTicket(ticket, groupBarcodes);
+            const { ticket: saved, book, due } = await applyConfirmBorrowToPendingTicket(ticket, groupBarcodes, {
+                sendBorrowEmail: true,
+                notifyBorrowerInApp: false,
+                pickupCompleteNotification: false,
+            });
             issued.push({
                 ticket: toClientLoan(saved, { product: toClientBookEmbedded(book) }),
                 barcodes: groupBarcodes,
@@ -746,7 +1096,8 @@ class loanTicketController {
         const list = await LoanTicketMongo.find({ userId: { $in: userIds } }).sort({ createdAt: -1 }).lean();
         const data = await Promise.all(list.map(async (item) => {
             const book = await resolveBookFromTicket(item);
-            return toClientLoan(item, { product: toClientBookEmbedded(book) });
+            const bookCopies = await buildBookCopiesWithTitles(item);
+            return { ...toClientLoan(item, { product: toClientBookEmbedded(book) }), bookCopies };
         }));
         new OK({ message: 'Get history book success', metadata: data }).send(res);
     }
@@ -764,14 +1115,19 @@ class loanTicketController {
         const userIds = [String(user._id)];
         if (user.mysqlId) userIds.push(String(user.mysqlId));
         if (!userIds.includes(String(ticket.userId))) throw new BadRequestError('Lịch sử mượn không tồn tại');
-        if (ticket.status !== 'PENDING_APPROVAL') throw new BadRequestError('Chỉ có thể huỷ phiếu đang chờ duyệt');
+        if (!['PENDING_APPROVAL', 'READY_FOR_PICKUP'].includes(ticket.status)) {
+            throw new BadRequestError('Chỉ có thể huỷ phiếu đang chờ duyệt hoặc đang chờ đến quầy nhận sách');
+        }
 
         ticket.status = 'CANCELLED';
         await ticket.save();
 
-        // PENDING tickets không có bản sao giữ chỗ — nhưng handle edge case nếu có
+        // Giải phóng bản RESERVED (đặt mượn online) hoặc edge case khác
         if (ticket.bookCopyIds?.length) {
-            await BookCopyMongo.updateMany({ _id: { $in: ticket.bookCopyIds } }, { $set: { status: 'AVAILABLE' } });
+            await BookCopyMongo.updateMany(
+                { _id: { $in: ticket.bookCopyIds }, status: 'RESERVED' },
+                { $set: { status: 'AVAILABLE' } },
+            );
             const book = await resolveBookFromTicket(ticket);
             if (book) await syncBookInventoryFields(book._id);
         }
@@ -944,7 +1300,7 @@ class loanTicketController {
         const next = legacyMap[status] || String(status || '').trim();
         const validNext = ['CANCELLED', 'OVERDUE'];
         if (!validNext.includes(next)) {
-            throw new BadRequestError(`Trạng thái không hợp lệ. Để duyệt phiếu, dùng API confirm-borrow với barcode.`);
+            throw new BadRequestError('Trạng thái không hợp lệ. Để chấp nhận yêu cầu đặt mượn: notify-pickup; để xuất kho: confirm-borrow.');
         }
 
         const findTicket = await findLoanByAnyId(idHistory);
@@ -960,7 +1316,10 @@ class loanTicketController {
 
         if (next === 'CANCELLED') {
             if (copyIds.length) {
-                await BookCopyMongo.updateMany({ _id: { $in: copyIds } }, { $set: { status: 'AVAILABLE' } });
+                await BookCopyMongo.updateMany(
+                    { _id: { $in: copyIds }, status: 'RESERVED' },
+                    { $set: { status: 'AVAILABLE' } },
+                );
                 if (findBook) await syncBookInventoryFields(findBook._id);
             }
             findTicket.status = 'CANCELLED';

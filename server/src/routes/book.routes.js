@@ -36,6 +36,11 @@ router.delete('/book-copy', authUser, libraryStaff, asyncHandler(controllerBook.
 router.post('/update', authUser, libraryStaff, asyncHandler(controllerBook.updateProduct));
 router.post('/delete', authUser, libraryStaff, asyncHandler(controllerBook.deleteProduct));
 
+/** Đổi tên thể loại trên toàn bộ đầu sách (đồng bộ category + category_1) */
+router.post('/bulk-rename-category', authUser, libraryStaff, asyncHandler(controllerBook.bulkRenameCategory));
+/** Gỡ thể loại khỏi toàn bộ đầu sách đang gán */
+router.post('/bulk-clear-category', authUser, libraryStaff, asyncHandler(controllerBook.bulkClearCategory));
+
 /** Thêm bản sao bằng barcode thủ công */
 router.post('/add-copies-by-barcode', authUser, libraryStaff, asyncHandler(controllerBook.addCopiesByBarcode));
 

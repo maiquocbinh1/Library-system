@@ -627,7 +627,7 @@ class controllerUser {
         if (user.mysqlId) userIdCandidates.push(String(user.mysqlId));
         const activeBorrow = await LoanTicketMongo.findOne({
             userId: { $in: userIdCandidates },
-            status: { $in: ['PENDING_APPROVAL', 'BORROWING', 'OVERDUE'] },
+            status: { $in: ['PENDING_APPROVAL', 'READY_FOR_PICKUP', 'BORROWING', 'OVERDUE'] },
         }).lean();
         if (activeBorrow) {
             throw new BadRequestError('Không thể xóa vì độc giả chưa trả hết sách');
@@ -808,7 +808,10 @@ class controllerUser {
         try {
             const totalUsers = await UserMongo.countDocuments();
             const totalBooks = await BookMongo.countDocuments();
-            const pendingRequests = await LoanTicketMongo.countDocuments(mongoFilterPendingApproval());
+            const pf = mongoFilterPendingApproval();
+            const pendingRequests = await LoanTicketMongo.countDocuments({
+                $or: [...(pf.$or || []), { status: 'READY_FOR_PICKUP' }],
+            });
 
             const distinctAvailableTitles = await BookCopyMongo.distinct('bookId', { status: 'AVAILABLE' });
             const booksInStock = distinctAvailableTitles.length;

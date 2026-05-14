@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Layout } from 'antd';
+import { toast } from 'react-toastify';
 import Sidebar from './InfoUserComponents/Sidebar';
 import ProfileAccount from './InfoUserComponents/ProfileAccount';
 import CurrentBorrows from './InfoUserComponents/CurrentBorrows';
@@ -8,6 +9,7 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import { useSearchParams } from 'react-router-dom';
 import { requestGetHistoryUser, requestMyUnpaidFines } from '../config/request';
+import { normalizeLoanStatusKey } from '../utils/loanTicketStatus';
 
 const VALID_TABS = ['profile', 'current', 'history'];
 
@@ -20,12 +22,33 @@ function InfoUser() {
     const [unpaidFineSummary, setUnpaidFineSummary] = useState(null);
     const [loans, setLoans] = useState([]);
     const [loansLoading, setLoansLoading] = useState(true);
+    /** Map phiếu id → trạng thái lần tải trước (để phát hiện thủ thư vừa duyệt). */
+    const loanStatusRef = useRef(null);
 
     const refreshLoans = useCallback(async () => {
         setLoansLoading(true);
         try {
             const res = await requestGetHistoryUser();
             const list = Array.isArray(res?.metadata) ? res.metadata : [];
+            const prev = loanStatusRef.current;
+            if (prev && list.length) {
+                for (const loan of list) {
+                    const id = String(loan.id || loan._id || '').trim();
+                    if (!id) continue;
+                    const oldKey = normalizeLoanStatusKey(prev[id]);
+                    const newKey = normalizeLoanStatusKey(loan.status);
+                    if (oldKey === 'PENDING_APPROVAL' && (newKey === 'BORROWING' || newKey === 'OVERDUE')) {
+                        toast.info('Vui lòng tới thư viện để nhận sách.');
+                        break;
+                    }
+                }
+            }
+            const next = {};
+            for (const loan of list) {
+                const id = String(loan.id || loan._id || '').trim();
+                if (id) next[id] = loan.status;
+            }
+            loanStatusRef.current = Object.keys(next).length ? next : null;
             setLoans(list);
         } catch {
             setLoans([]);
@@ -33,6 +56,14 @@ function InfoUser() {
             setLoansLoading(false);
         }
     }, []);
+
+    /** Tải lại phiếu định kỳ để sinh viên thấy thông báo sau khi thủ thư duyệt (không cần F5). */
+    useEffect(() => {
+        const t = window.setInterval(() => {
+            void refreshLoans();
+        }, 45000);
+        return () => window.clearInterval(t);
+    }, [refreshLoans]);
 
     useEffect(() => {
         setActiveComponent(currentTab);

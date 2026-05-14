@@ -22,7 +22,10 @@ router.post('/return-books', authUser, libraryStaff, (req, res) => {
 });
 
 // ─── API mới — luồng barcode qltv_ptit ───────────────────────────────────────
-/** Thủ thư gõ barcode để xác nhận xuất kho (PENDING → BORROWING) */
+/** Thủ thư: xác nhận yêu cầu đặt mượn — gán bản RESERVED + thông báo SV đến quầy */
+router.put('/notify-pickup', authUser, libraryStaff, asyncHandler(controllerLoanTicket.notifyPickupReserve));
+
+/** Thủ thư: hoàn tất xuất kho (READY hoặc PENDING+barcode quầy) → BORROWING */
 router.put('/confirm-borrow', authUser, libraryStaff, asyncHandler(controllerLoanTicket.confirmBorrow));
 
 /** Thủ thư: lập phiếu tại quầy (độc giả + nhiều barcode → xuất kho ngay) */

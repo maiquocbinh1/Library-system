@@ -1,7 +1,7 @@
 /**
  * Chuẩn hóa dữ liệu demo:
  *   - Mỗi độc giả (role=user): tối đa 8 slot đang mở =
- *       PENDING_APPROVAL (requestedQuantity) + BORROWING/OVERDUE (|bookCopyIds|).
+ *       PENDING_APPROVAL / READY_FOR_PICKUP (requestedQuantity) + BORROWING/OVERDUE (|bookCopyIds|).
  *   - BORROWING còn hạn: dueDate ≤ borrowDate + 14 (+7 nếu đã gia hạn 1 lần); renewalCount > 1 → 1.
  *   - BORROWING mà hạn trả đã qua (theo ngày): chuyển OVERDUE, thêm phạt UNPAID nếu chưa có.
  *   - OVERDUE: không đổi borrowDate/dueDate; chỉ đóng phiếu khi cần giảm slot > 8.
@@ -53,7 +53,7 @@ function maxDueForTicket(borrowDate, renewalCapped01) {
 }
 
 function ticketSlots(t) {
-    if (t.status === 'PENDING_APPROVAL') return Number(t.requestedQuantity) || 0;
+    if (t.status === 'PENDING_APPROVAL' || t.status === 'READY_FOR_PICKUP') return Number(t.requestedQuantity) || 0;
     if (t.status === 'BORROWING' || t.status === 'OVERDUE') return Array.isArray(t.bookCopyIds) ? t.bookCopyIds.length : 0;
     return 0;
 }
@@ -61,7 +61,7 @@ function ticketSlots(t) {
 async function computeSlots(userKeys) {
     const rows = await LoanTicketMongo.find({
         userId: { $in: userKeys },
-        status: { $in: ['PENDING_APPROVAL', 'BORROWING', 'OVERDUE'] },
+        status: { $in: ['PENDING_APPROVAL', 'READY_FOR_PICKUP', 'BORROWING', 'OVERDUE'] },
     })
         .select('_id status borrowDate dueDate bookCopyIds requestedQuantity renewalCount createdAt mysqlId')
         .lean();
@@ -100,9 +100,24 @@ async function closeOpenTicket(ticketLean, dryRun) {
 }
 
 async function cancelPending(ticketLean, dryRun) {
-    const q = Number(ticketLean.requestedQuantity) || 0;
+    const copyIds = (ticketLean.bookCopyIds || []).filter(Boolean);
+    const q = Number(ticketLean.requestedQuantity) || copyIds.length || 0;
     if (!dryRun) {
-        await LoanTicketMongo.updateOne({ _id: ticketLean._id }, { $set: { status: 'CANCELLED' } });
+        const bookIds = new Set();
+        if (copyIds.length) {
+            await BookCopyMongo.updateMany({ _id: { $in: copyIds } }, { $set: { status: 'AVAILABLE' } });
+            for (const cid of copyIds) {
+                const c = await BookCopyMongo.findById(cid).select('bookId').lean();
+                if (c?.bookId) bookIds.add(String(c.bookId));
+            }
+        }
+        await LoanTicketMongo.updateOne(
+            { _id: ticketLean._id },
+            { $set: { status: 'CANCELLED', bookCopyIds: [] } },
+        );
+        for (const bid of bookIds) {
+            if (mongoose.isValidObjectId(bid)) await syncBookInventoryFields(new mongoose.Types.ObjectId(bid));
+        }
     }
     return q;
 }
@@ -116,7 +131,7 @@ async function repairUser(user, dryRun) {
 
     const borrowing = rows.filter((t) => t.status === 'BORROWING').sort((a, b) => new Date(b.borrowDate) - new Date(a.borrowDate));
     const pending = rows
-        .filter((t) => t.status === 'PENDING_APPROVAL')
+        .filter((t) => t.status === 'PENDING_APPROVAL' || t.status === 'READY_FOR_PICKUP')
         .sort((a, b) => new Date(b.createdAt || b.borrowDate) - new Date(a.createdAt || a.borrowDate));
     const overdue = rows.filter((t) => t.status === 'OVERDUE').sort((a, b) => new Date(b.borrowDate) - new Date(a.borrowDate));
 

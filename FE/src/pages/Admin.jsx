@@ -14,6 +14,7 @@ import {
     PieChartOutlined,
     SettingOutlined,
     ShopOutlined,
+    InboxOutlined,
     SolutionOutlined,
     TagsOutlined,
     TeamOutlined,
@@ -32,6 +33,7 @@ import FineManagement from './DashbroadComponents/FineManagement';
 import PolicyManagement from './DashbroadComponents/PolicyManagement';
 import EmailLogManagement from './DashbroadComponents/EmailLogManagement';
 import CirculationDesk from './DashbroadComponents/CirculationDesk';
+import LoanRequestManagement from './DashbroadComponents/LoanRequestManagement';
 import CategoryManagement from './DashbroadComponents/CategoryManagement';
 import PersonnelManagement from './DashbroadComponents/PersonnelManagement';
 import FinancialReport from './DashbroadComponents/FinancialReport';
@@ -45,6 +47,9 @@ const VIEW_COMPONENTS = {
     stats: <Statistics />,
     finance: <FinancialReport />,
     'borrow-return': <CirculationDesk />,
+    'loan-requests': (
+        <LoanRequestManagement presetFilter="approval" pageTitle="Duyệt yêu cầu mượn online" />
+    ),
     fines: <FineManagement />,
     book: <BookManagement />,
     'book-copies': <BookCopyManagement />,
@@ -62,7 +67,7 @@ const ADMIN_VIEW_KEYS = new Set(Object.keys(VIEW_COMPONENTS));
 function getParentSubmenuKeyForLeaf(leafKey, isAdmin) {
     if (leafKey === 'stats') return 'overview';
     if (!isAdmin && leafKey === 'finance') return 'overview';
-    if (['borrow-return', 'fines'].includes(leafKey)) return 'circulation';
+    if (['borrow-return', 'loan-requests', 'fines'].includes(leafKey)) return 'circulation';
     if (['book', 'book-copies', 'book-categories'].includes(leafKey)) return 'inventory';
     if (['email-logs', 'patron-profiles', 'card-issue'].includes(leafKey)) return 'patrons';
     if (isAdmin && ['personnel', 'policy', 'finance'].includes(leafKey)) return 'system';
@@ -125,6 +130,7 @@ function buildMenuItems(isAdmin) {
             label: 'Lưu thông (Circulation)',
             children: [
                 { key: 'borrow-return', icon: <ShopOutlined />, label: 'Mượn trả sách' },
+                { key: 'loan-requests', icon: <InboxOutlined />, label: 'Duyệt yêu cầu mượn online' },
                 { key: 'fines', icon: <DollarOutlined />, label: 'Quản lý phí phạt' },
             ],
         },

@@ -1,6 +1,13 @@
 const mongoose = require('mongoose');
 
-const LOAN_TICKET_STATUS = ['PENDING_APPROVAL', 'BORROWING', 'OVERDUE', 'RETURNED', 'CANCELLED'];
+const LOAN_TICKET_STATUS = [
+    'PENDING_APPROVAL',
+    'READY_FOR_PICKUP',
+    'BORROWING',
+    'OVERDUE',
+    'RETURNED',
+    'CANCELLED',
+];
 
 const loanTicketMongoSchema = new mongoose.Schema(
     {

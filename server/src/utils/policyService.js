@@ -18,6 +18,7 @@ async function getBorrowPolicyForUser(user) {
     return {
         readerType: 'SinhVien_ChinhQuy',
         maxBooks: 5,
+        maxCopiesPerTitle: 2,
         loanDays: 14,
         renewExtensionDays: 7,
         overdueFinePerDay: 1000,

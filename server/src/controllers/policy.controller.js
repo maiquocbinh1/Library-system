@@ -91,7 +91,7 @@ class policyController {
     }
 
     async createPolicy(req, res) {
-        const { readerType, maxBooks, loanDays, overdueFinePerDay, renewExtensionDays } = req.body;
+        const { readerType, maxBooks, loanDays, overdueFinePerDay, renewExtensionDays, maxCopiesPerTitle } = req.body;
         if (!readerType || !READER_TYPES.includes(String(readerType))) {
             throw new BadRequestError('readerType không hợp lệ');
         }
@@ -115,6 +115,11 @@ class policyController {
             throw new BadRequestError('renewExtensionDays chỉ được phép là 7 ngày (1 tuần)');
         }
 
+        const perTitle = maxCopiesPerTitle !== undefined && maxCopiesPerTitle !== null ? Number(maxCopiesPerTitle) : 2;
+        if (!Number.isFinite(perTitle) || perTitle < 1) {
+            throw new BadRequestError('maxCopiesPerTitle không hợp lệ');
+        }
+
         const existed = await PolicyMongo.findOne({ readerType }).lean();
         if (existed) {
             throw new BadRequestError('Đã tồn tại chính sách cho readerType này');
@@ -123,6 +128,7 @@ class policyController {
         const doc = await PolicyMongo.create({
             readerType,
             maxBooks: maxB,
+            maxCopiesPerTitle: perTitle,
             loanDays: loanD,
             renewExtensionDays: renewExt ?? 7,
             overdueFinePerDay: fine,
@@ -144,7 +150,7 @@ class policyController {
             throw new BadRequestError('Chính sách không tồn tại');
         }
 
-        const { maxBooks, loanDays, overdueFinePerDay, readerType, renewExtensionDays } = req.body;
+        const { maxBooks, loanDays, overdueFinePerDay, readerType, renewExtensionDays, maxCopiesPerTitle } = req.body;
 
         if (readerType !== undefined) {
             const rt = String(readerType).trim();
@@ -162,6 +168,11 @@ class policyController {
             const n = Number(maxBooks);
             if (!Number.isFinite(n) || n < 1) throw new BadRequestError('maxBooks không hợp lệ');
             policy.maxBooks = n;
+        }
+        if (maxCopiesPerTitle !== undefined) {
+            const n = Number(maxCopiesPerTitle);
+            if (!Number.isFinite(n) || n < 1) throw new BadRequestError('maxCopiesPerTitle không hợp lệ');
+            policy.maxCopiesPerTitle = n;
         }
         if (loanDays !== undefined) {
             const n = Number(loanDays);

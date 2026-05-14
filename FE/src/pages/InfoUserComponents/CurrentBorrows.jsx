@@ -1,9 +1,9 @@
 import React from 'react';
-import { Card, Empty, List, Image, Typography, Space, Spin, Button } from 'antd';
+import { Card, Empty, List, Image, Typography, Space, Spin, Button, Tag } from 'antd';
 import { requestCancelBook } from '../../config/request';
 import dayjs from 'dayjs';
 import { toast } from 'react-toastify';
-import { isPendingApproval, loanStatusMeta, normalizeLoanStatusKey } from '../../utils/loanTicketStatus';
+import { isPendingApproval, isReadyForPickup, loanStatusMeta, normalizeLoanStatusKey } from '../../utils/loanTicketStatus';
 import { PLACEHOLDER_BOOK_COVER, resolveBookCoverUrl } from '../../utils/resolveBookCoverUrl';
 
 const { Text, Title } = Typography;
@@ -16,7 +16,7 @@ function bookCoverUrl(item) {
 /** Chỉ phiếu đang mượn / quá hạn — cùng giao diện thẻ với lịch sử đầy đủ. */
 const CurrentBorrows = ({ loans = [], loading, onRefresh }) => {
     const active = loans.filter((item) =>
-        ['BORROWING', 'OVERDUE', 'PENDING_APPROVAL'].includes(normalizeLoanStatusKey(item?.status)),
+        ['BORROWING', 'OVERDUE', 'PENDING_APPROVAL', 'READY_FOR_PICKUP'].includes(normalizeLoanStatusKey(item?.status)),
     );
 
     const handleCancelBook = async (idHistory) => {
@@ -54,6 +54,7 @@ const CurrentBorrows = ({ loans = [], loading, onRefresh }) => {
                         const due = item.returnDate && dayjs(item.returnDate).isValid() ? dayjs(item.returnDate) : null;
                         const borrowOk = item.borrowDate && dayjs(item.borrowDate).isValid();
                         const isPending = isPendingApproval(item.status);
+                        const isReady = isReadyForPickup(item.status);
                         const showCountdown =
                             normalizeLoanStatusKey(item.status) === 'BORROWING' && due;
                         return (
@@ -78,13 +79,42 @@ const CurrentBorrows = ({ loans = [], loading, onRefresh }) => {
                                                     {Number(item.quantity) ||
                                                         (Array.isArray(item.bookCopyIds) ? item.bookCopyIds.length : 0)}
                                                 </Text>
+                                                {isReady &&
+                                                    Array.isArray(item.bookCopies) &&
+                                                    item.bookCopies.some((c) => c.barcode) && (
+                                                    <div className="rounded-lg border border-cyan-100 bg-cyan-50/80 px-2 py-1.5">
+                                                        <Text type="secondary" className="text-xs">
+                                                            Thư viện đã gán sách — đến quầy mượn trả, mang đúng các mã sau:
+                                                        </Text>
+                                                        <div className="mt-1 flex flex-wrap gap-1">
+                                                            {item.bookCopies
+                                                                .filter((c) => c.barcode)
+                                                                .map((c) => (
+                                                                    <Tag key={c.barcode} color="cyan" className="m-0 font-mono text-xs">
+                                                                        {c.barcode}
+                                                                    </Tag>
+                                                                ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {isPending && (
+                                                    <Text type="secondary" className="text-xs">
+                                                        Đang chờ thư viện xác nhận yêu cầu mượn (chưa gán bản sao).
+                                                    </Text>
+                                                )}
                                                 <Text type="secondary">
                                                     Ngày mượn:{' '}
                                                     {borrowOk ? dayjs(item.borrowDate).format('DD/MM/YYYY') : '—'}
                                                 </Text>
                                                 <Text type="secondary">
                                                     Hạn trả:{' '}
-                                                    {isPending ? 'Sau khi thư viện duyệt' : due ? due.format('DD/MM/YYYY') : '—'}
+                                                    {isPending
+                                                        ? 'Sau khi thư viện xác nhận yêu cầu'
+                                                        : isReady
+                                                          ? 'Sau khi lập phiếu tại quầy'
+                                                          : due
+                                                            ? due.format('DD/MM/YYYY')
+                                                            : '—'}
                                                 </Text>
                                                 {showCountdown && (
                                                     <p className="text-rose-600">
@@ -104,7 +134,9 @@ const CurrentBorrows = ({ loans = [], loading, onRefresh }) => {
                                                             ? 'bg-rose-100 text-rose-800'
                                                             : statusInfo.color === 'gold'
                                                               ? 'bg-amber-100 text-amber-900'
-                                                              : 'bg-slate-100 text-slate-700'
+                                                              : statusInfo.color === 'cyan'
+                                                                ? 'bg-cyan-100 text-cyan-900'
+                                                                : 'bg-slate-100 text-slate-700'
                                                 }`}
                                             >
                                                 {statusInfo.text}
@@ -112,7 +144,7 @@ const CurrentBorrows = ({ loans = [], loading, onRefresh }) => {
                                             <Text type="secondary" className="text-xs">
                                                 Mã: {String(item.id || '').substring(0, 10)}
                                             </Text>
-                                            {isPendingApproval(item.status) && (
+                                            {(isPending || isReady) && (
                                                 <Button danger type="primary" onClick={() => handleCancelBook(item.id)}>
                                                     Huỷ mượn
                                                 </Button>

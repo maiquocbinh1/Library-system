@@ -325,7 +325,13 @@ export const requestStaffDeskIssue = async (data) => {
     return res.data;
 };
 
-/** Thủ thư xác nhận xuất kho bằng barcode (PENDING → BORROWING) */
+/** Thủ thư: bước 1 đặt mượn online — gán bản RESERVED + thông báo SV đến quầy */
+export const requestNotifyPickup = async (data) => {
+    const res = await apiClient.put(`${apiHistoryBook}/notify-pickup`, data);
+    return res.data;
+};
+
+/** Thủ thư: hoàn tất xuất kho (phiếu chờ quầy hoặc quầy + barcode) → BORROWING */
 export const requestConfirmBorrow = async (data) => {
     const res = await apiClient.put(`${apiHistoryBook}/confirm-borrow`, data);
     return res.data;
@@ -364,6 +370,16 @@ export const requestRenewLoan = async (data) => {
 /** Kiểm tra thông tin barcode */
 export const requestCheckBarcode = async (barcode) => {
     const res = await apiClient.get(`${apiHistoryBook}/check-barcode?barcode=${encodeURIComponent(barcode)}`);
+    return res.data;
+};
+
+export const requestBulkRenameBookCategory = async (data) => {
+    const res = await apiClient.post(`${apiProduct}/bulk-rename-category`, data);
+    return res.data;
+};
+
+export const requestBulkClearBookCategory = async (data) => {
+    const res = await apiClient.post(`${apiProduct}/bulk-clear-category`, data);
     return res.data;
 };
 

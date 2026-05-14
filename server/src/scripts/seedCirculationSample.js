@@ -159,6 +159,7 @@ async function upsertPolicy() {
         {
             $set: {
                 maxBooks: 8,
+                maxCopiesPerTitle: 2,
                 loanDays: 14,
                 renewExtensionDays: 7,
                 overdueFinePerDay: 1000,
@@ -168,6 +169,7 @@ async function upsertPolicy() {
     );
     console.log('[seed-circulation] Quy định SinhVien_ChinhQuy:', {
         maxBooks: doc.maxBooks,
+        maxCopiesPerTitle: doc.maxCopiesPerTitle,
         loanDays: doc.loanDays,
         renewExtensionDays: doc.renewExtensionDays,
         overdueFinePerDay: doc.overdueFinePerDay,

@@ -26,6 +26,25 @@ function normalizeBookCode(raw) {
     return null;
 }
 
+/** Khớp đầu sách theo thể loại lưu (giống UI/DSS: ưu `category_1`, không có thì `category`). */
+function categoryStoredMatchFilter(exactName) {
+    const s = String(exactName || '').trim();
+    if (!s) return null;
+    return {
+        $or: [
+            { category_1: s },
+            {
+                $and: [
+                    {
+                        $or: [{ category_1: { $exists: false } }, { category_1: null }, { category_1: '' }],
+                    },
+                    { category: s },
+                ],
+            },
+        ],
+    };
+}
+
 async function generateUniqueBookCode() {
     const latestBook = await BookMongo.findOne({
         bookCode: { $exists: true, $ne: null, $ne: '' },
@@ -487,7 +506,7 @@ class controllerBook {
 
         const activeLoan = await LoanTicketMongo.findOne({
             bookCopyIds: copy._id,
-            status: { $in: ['PENDING_APPROVAL', 'BORROWING', 'OVERDUE'] },
+            status: { $in: ['PENDING_APPROVAL', 'READY_FOR_PICKUP', 'BORROWING', 'OVERDUE'] },
         })
             .select('_id')
             .lean();
@@ -712,7 +731,7 @@ class controllerBook {
         const copyIdList = await BookCopyMongo.find({ bookId: product._id }).distinct('_id');
         const activeLoan = await LoanTicketMongo.findOne({
             bookCopyIds: { $in: copyIdList },
-            status: { $in: ['PENDING_APPROVAL', 'BORROWING', 'OVERDUE'] },
+            status: { $in: ['PENDING_APPROVAL', 'READY_FOR_PICKUP', 'BORROWING', 'OVERDUE'] },
         })
             .select('_id')
             .lean();
@@ -733,6 +752,55 @@ class controllerBook {
         new OK({
             message: 'Delete product success',
             metadata: 1,
+        }).send(res);
+    }
+
+    /**
+     * Đổi tên thể loại trên mọi đầu sách đang gán (đồng bộ category + category_1).
+     * POST /api/product/bulk-rename-category  body: { from, to }
+     */
+    async bulkRenameCategory(req, res) {
+        await ensureLegacyBooks();
+        const from = String(req.body?.from || '').trim();
+        const to = String(req.body?.to || '').trim();
+        if (!from) throw new BadRequestError('Thiếu tên thể loại hiện tại');
+        if (!to) throw new BadRequestError('Thiếu tên thể loại mới');
+        if (from === to) throw new BadRequestError('Tên mới trùng tên cũ');
+
+        const filter = categoryStoredMatchFilter(from);
+        if (!filter) throw new BadRequestError('Tên thể loại không hợp lệ');
+
+        const r = await BookMongo.updateMany(filter, { $set: { category: to, category_1: to } });
+
+        new OK({
+            message:
+                r.modifiedCount > 0
+                    ? `Đã đổi thể loại «${from}» → «${to}» trên ${r.modifiedCount} đầu sách`
+                    : 'Không có đầu sách nào đang gán thể loại này',
+            metadata: { matchedCount: r.matchedCount, modifiedCount: r.modifiedCount },
+        }).send(res);
+    }
+
+    /**
+     * Gỡ thể loại khỏi mọi đầu sách đang gán (category + category_1 = null). Biểu đồ DSS tính lại theo dữ liệu mới.
+     * POST /api/product/bulk-clear-category  body: { name }
+     */
+    async bulkClearCategory(req, res) {
+        await ensureLegacyBooks();
+        const name = String(req.body?.name || req.body?.category || '').trim();
+        if (!name) throw new BadRequestError('Thiếu tên thể loại cần gỡ');
+
+        const filter = categoryStoredMatchFilter(name);
+        if (!filter) throw new BadRequestError('Tên thể loại không hợp lệ');
+
+        const r = await BookMongo.updateMany(filter, { $set: { category: null, category_1: null } });
+
+        new OK({
+            message:
+                r.modifiedCount > 0
+                    ? `Đã gỡ thể loại «${name}» trên ${r.modifiedCount} đầu sách`
+                    : 'Không có đầu sách nào đang gán thể loại này',
+            metadata: { matchedCount: r.matchedCount, modifiedCount: r.modifiedCount },
         }).send(res);
     }
 }

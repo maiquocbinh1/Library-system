@@ -1,4 +1,5 @@
 import {
+    Alert,
     Button,
     Card,
     Col,
@@ -13,35 +14,122 @@ import {
     Space,
     Typography,
 } from 'antd';
-import { BookOutlined, CalendarOutlined, IdcardOutlined, PhoneOutlined, UserOutlined } from '@ant-design/icons';
+import { BookOutlined, CalendarOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useStore } from '../hooks/useStore';
-import { requestCreateHistoryBook } from '../config/request';
+import { requestCreateHistoryBook, requestGetHistoryUser } from '../config/request';
 import { toast } from 'react-toastify';
+import { normalizeLoanStatusKey } from '../utils/loanTicketStatus';
 
 const { Title, Text } = Typography;
 
 const DEFAULT_LOAN_DAYS_FALLBACK = 30;
+const PATRON_TOTAL_BOOKS_SYSTEM_CAP = 8;
+const DEFAULT_MAX_COPIES_PER_TITLE = 2;
 
-async function fetchPolicyLoanDays(readerType) {
-    if (!readerType) return DEFAULT_LOAN_DAYS_FALLBACK;
+async function fetchPolicyForReaderType(readerType) {
+    if (!readerType) {
+        return {
+            loanDays: DEFAULT_LOAN_DAYS_FALLBACK,
+            maxBooks: PATRON_TOTAL_BOOKS_SYSTEM_CAP,
+            maxCopiesPerTitle: DEFAULT_MAX_COPIES_PER_TITLE,
+        };
+    }
     try {
         const { data } = await axios.get(
             `${import.meta.env.VITE_API_URL}/api/policy/reader-type/${encodeURIComponent(readerType)}`,
         );
-        const days = data?.metadata?.loanDays;
-        return Number.isFinite(Number(days)) ? Number(days) : DEFAULT_LOAN_DAYS_FALLBACK;
+        const md = data?.metadata;
+        const days = Number(md?.loanDays);
+        const maxB = Number(md?.maxBooks);
+        const perTitle = Number(md?.maxCopiesPerTitle);
+        return {
+            loanDays: Number.isFinite(days) ? days : DEFAULT_LOAN_DAYS_FALLBACK,
+            maxBooks: Number.isFinite(maxB) && maxB > 0 ? maxB : PATRON_TOTAL_BOOKS_SYSTEM_CAP,
+            maxCopiesPerTitle:
+                Number.isFinite(perTitle) && perTitle >= 1 ? perTitle : DEFAULT_MAX_COPIES_PER_TITLE,
+        };
     } catch {
-        return DEFAULT_LOAN_DAYS_FALLBACK;
+        return {
+            loanDays: DEFAULT_LOAN_DAYS_FALLBACK,
+            maxBooks: PATRON_TOTAL_BOOKS_SYSTEM_CAP,
+            maxCopiesPerTitle: DEFAULT_MAX_COPIES_PER_TITLE,
+        };
     }
+}
+
+function sumActiveBorrowUnits(loans) {
+    let s = 0;
+    for (const L of loans || []) {
+        const k = normalizeLoanStatusKey(L?.status);
+        if (k === 'PENDING_APPROVAL' || k === 'BORROWING' || k === 'OVERDUE') {
+            s += Number(L.quantity) || 0;
+        }
+    }
+    return s;
+}
+
+function effectiveBorrowCapFromPolicyMax(policyMaxBooks) {
+    const p = Number(policyMaxBooks);
+    const policyCap = Number.isFinite(p) && p > 0 ? p : PATRON_TOTAL_BOOKS_SYSTEM_CAP;
+    return Math.min(PATRON_TOTAL_BOOKS_SYSTEM_CAP, policyCap);
+}
+
+function effectiveMaxCopiesPerTitleFromPolicy(policyMaxCopiesPerTitle) {
+    const n = Number(policyMaxCopiesPerTitle);
+    return Number.isFinite(n) && n >= 1 ? n : DEFAULT_MAX_COPIES_PER_TITLE;
+}
+
+function loanBookIdKey(L) {
+    const b = L?.bookId ?? L?.product?.id ?? L?.product?._id;
+    return b != null ? String(b) : '';
+}
+
+function sumActiveBorrowUnitsForBook(loans, bookIdStr) {
+    const bid = String(bookIdStr || '');
+    if (!bid) return 0;
+    let s = 0;
+    for (const L of loans || []) {
+        if (loanBookIdKey(L) !== bid) continue;
+        const k = normalizeLoanStatusKey(L?.status);
+        if (k === 'PENDING_APPROVAL' || k === 'BORROWING' || k === 'OVERDUE') {
+            s += Number(L.quantity) || 0;
+        }
+    }
+    return s;
+}
+
+function profileMsv(u) {
+    const stu = String(u?.studentId ?? '').trim();
+    if (stu && stu !== '0') return stu;
+    const leg = String(u?.idStudent ?? '').trim();
+    if (leg && leg !== '0') return leg;
+    const rc = String(u?.readerCode ?? '').trim();
+    if (rc && rc !== '0') return rc;
+    return '';
+}
+
+function profilePhone(u) {
+    return String(u?.phone ?? u?.phoneNumber ?? '').trim();
+}
+
+function profileComplete(u) {
+    if (!u) return false;
+    const name = String(u.fullName || '').trim();
+    return Boolean(name && profileMsv(u));
 }
 
 function ModalBorrowBook({ visible, onCancel, bookData }) {
     const [form] = Form.useForm();
     const [loading, setLoading] = useState(false);
     const [loanDaysMax, setLoanDaysMax] = useState(DEFAULT_LOAN_DAYS_FALLBACK);
+    const [policyMaxBooks, setPolicyMaxBooks] = useState(PATRON_TOTAL_BOOKS_SYSTEM_CAP);
+    const [policyMaxCopiesPerTitle, setPolicyMaxCopiesPerTitle] = useState(DEFAULT_MAX_COPIES_PER_TITLE);
+    const [activeBorrowQty, setActiveBorrowQty] = useState(0);
+    const [userLoans, setUserLoans] = useState([]);
     const { dataUser } = useStore();
 
     const today = useMemo(() => dayjs(), []);
@@ -49,62 +137,122 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
     const minReturnDate = useMemo(() => today.add(1, 'day'), [today]);
     const maxReturnDate = useMemo(() => today.add(loanDaysMax, 'day'), [today, loanDaysMax]);
 
+    const effectiveBorrowCap = useMemo(
+        () => effectiveBorrowCapFromPolicyMax(policyMaxBooks),
+        [policyMaxBooks],
+    );
+    const effectivePerTitleCap = useMemo(
+        () => effectiveMaxCopiesPerTitleFromPolicy(policyMaxCopiesPerTitle),
+        [policyMaxCopiesPerTitle],
+    );
+    const activeSameTitleQty = useMemo(
+        () => sumActiveBorrowUnitsForBook(userLoans, bookData?.id),
+        [userLoans, bookData?.id],
+    );
+    const remainingSlots = Math.max(0, effectiveBorrowCap - activeBorrowQty);
+    const remainingForTitle = Math.max(0, effectivePerTitleCap - activeSameTitleQty);
+    const maxQuantityThisRequest = Math.min(Number(bookData?.stock) || 0, remainingSlots, remainingForTitle);
+
     const bookImageSrc = bookData?.image?.startsWith('http')
         ? bookData.image
         : `${import.meta.env.VITE_API_URL_IMAGE}/${bookData?.image || ''}`;
 
-    const loadPolicy = useCallback(async () => {
-        const days = await fetchPolicyLoanDays(dataUser?.readerType);
-        setLoanDaysMax(days);
+    const loadPolicyAndBorrowCount = useCallback(async () => {
+        const [pol, hist] = await Promise.all([
+            fetchPolicyForReaderType(dataUser?.readerType),
+            requestGetHistoryUser().catch(() => ({ metadata: [] })),
+        ]);
+        setLoanDaysMax(pol.loanDays);
+        setPolicyMaxBooks(pol.maxBooks);
+        setPolicyMaxCopiesPerTitle(pol.maxCopiesPerTitle);
+        const list = Array.isArray(hist?.metadata) ? hist.metadata : [];
+        setUserLoans(list);
+        setActiveBorrowQty(sumActiveBorrowUnits(list));
     }, [dataUser?.readerType]);
 
     useEffect(() => {
-        if (visible && dataUser?.readerType) {
-            loadPolicy();
-        } else if (visible) {
+        if (!visible) return;
+        if (dataUser) {
+            loadPolicyAndBorrowCount();
+        } else {
             setLoanDaysMax(DEFAULT_LOAN_DAYS_FALLBACK);
+            setPolicyMaxBooks(PATRON_TOTAL_BOOKS_SYSTEM_CAP);
+            setPolicyMaxCopiesPerTitle(DEFAULT_MAX_COPIES_PER_TITLE);
+            setActiveBorrowQty(0);
+            setUserLoans([]);
         }
-    }, [visible, dataUser?.readerType, loadPolicy]);
+    }, [visible, dataUser, loadPolicyAndBorrowCount]);
 
     useEffect(() => {
-        if (visible && dataUser) {
-            form.setFieldsValue({
-                quantity: 1,
-                fullName: dataUser?.fullName || '',
-                address: dataUser?.address || '',
-                phoneNumber: dataUser?.phone || dataUser?.phoneNumber || '',
-                studentId:
-                    dataUser?.studentId || dataUser?.idStudent || dataUser?.readerCode || '',
-                returnDate: minReturnDate,
-            });
-        }
-    }, [visible, dataUser, form, minReturnDate]);
+        if (!visible || !dataUser) return;
+        const qInit = maxQuantityThisRequest >= 1 ? Math.min(1, maxQuantityThisRequest) : 1;
+        form.setFieldsValue({
+            quantity: maxQuantityThisRequest >= 1 ? qInit : undefined,
+            returnDate: minReturnDate,
+        });
+    }, [visible, dataUser, form, minReturnDate, maxQuantityThisRequest]);
 
     const handleSubmit = async (values) => {
+        if (!dataUser) {
+            toast.error('Bạn cần đăng nhập để đặt mượn sách.');
+            return;
+        }
+        if (!profileComplete(dataUser)) {
+            toast.warning('Bạn đã thiếu thông tin, vui lòng cập nhật.');
+            return;
+        }
+
+        const q = Number(values.quantity);
+        if (!Number.isFinite(q) || q < 1) {
+            toast.error('Vui lòng nhập số lượng hợp lệ.');
+            return;
+        }
+        if (activeBorrowQty + q > effectiveBorrowCap) {
+            toast.error(
+                `Không mượn được: bạn đang mượn/chờ duyệt ${activeBorrowQty} cuốn; tối đa ${effectiveBorrowCap} cuốn.`,
+            );
+            return;
+        }
+        if (activeSameTitleQty + q > effectivePerTitleCap) {
+            toast.error(
+                `Không mượn được: với đầu sách này bạn đang có ${activeSameTitleQty} cuốn; tối đa ${effectivePerTitleCap} cuốn cùng lúc.`,
+            );
+            return;
+        }
+        if (q > maxQuantityThisRequest) {
+            toast.error('Số lượng vượt quá phần còn được phép mượn hoặc quá tồn kho.');
+            return;
+        }
+
         setLoading(true);
         try {
             const borrowData = {
-                fullName: values.fullName,
-                address: values.address,
-                phoneNumber: values.phoneNumber,
+                fullName: String(dataUser.fullName || '').trim(),
+                address: String(dataUser.address || '').trim(),
+                phoneNumber: profilePhone(dataUser) || '',
                 quantity: values.quantity,
                 bookId: bookData?.id,
                 borrowDate: today.format('YYYY-MM-DD'),
             };
 
-            try {
-                await requestCreateHistoryBook(borrowData);
-                toast.success('Đăng ký mượn sách thành công! Phiếu chờ thư viện duyệt; hạn trả sẽ được tính sau khi duyệt theo nội quy PTIT.');
-            } catch (error) {
-                console.error('Error submitting borrow request:', error);
-                toast.error(error.response?.data?.message || 'Có lỗi xảy ra');
-            }
-
+            await requestCreateHistoryBook(borrowData);
+            toast.success(
+                'Đã ghi nhận yêu cầu. Thư viện sẽ xem xét; khi được xác nhận bạn sẽ nhận thông báo kèm mã bản sao để đến quầy lấy sách.',
+            );
             form.resetFields();
             onCancel();
         } catch (error) {
             console.error('Error submitting borrow request:', error);
-            toast.error('Đăng ký mượn sách thất bại!');
+            const msg = String(error?.response?.data?.message || '');
+            if (/MSV|họ tên|hồ sơ|chưa có MSV/i.test(msg)) {
+                toast.warning('Bạn đã thiếu thông tin, vui lòng cập nhật.');
+            } else if (/Không mượn được|vượt quá.*cuốn|cùng lúc|mỗi đầu sách|đầu sách «/i.test(msg)) {
+                toast.error(msg || 'Không mượn được: đã vượt quá số cuốn cho phép.');
+            } else if (/phạt|nợ|thanh toán/i.test(msg)) {
+                toast.warning(msg || 'Bạn phải thanh toán nợ phạt trước khi mượn sách mới.');
+            } else {
+                toast.error(msg || 'Đăng ký mượn sách thất bại.');
+            }
         } finally {
             setLoading(false);
         }
@@ -128,8 +276,14 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
         return Promise.resolve();
     };
 
-    const isSubmitDisabled = !bookData || bookData.stock <= 0 || loading;
+    const isSubmitDisabled =
+        !bookData ||
+        bookData.stock <= 0 ||
+        loading ||
+        !profileComplete(dataUser) ||
+        maxQuantityThisRequest < 1;
     const bookTitle = bookData?.nameProduct || bookData?.title;
+    const msv = profileMsv(dataUser) || '—';
 
     return (
         <Modal
@@ -150,8 +304,8 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
         >
             <div className="space-y-6">
                 {bookData && (
-                    <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                        <Title level={4} className="text-gray-800 mb-4">
+                    <Card className="border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+                        <Title level={4} className="mb-4 text-gray-800">
                             📚 Thông tin sách
                         </Title>
                         <Row gutter={16} align="middle">
@@ -161,17 +315,17 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
                                     alt={bookTitle}
                                     width={120}
                                     height={160}
-                                    className="rounded-lg shadow-md object-cover"
+                                    className="rounded-lg object-cover shadow-md"
                                     preview={false}
                                     fallback="/placeholder-avatar.png"
                                 />
                             </Col>
                             <Col xs={24} sm={16}>
                                 <Space direction="vertical" size="small" className="w-full">
-                                    <Title level={5} className="text-gray-800 mb-2">
+                                    <Title level={5} className="mb-2 text-gray-800">
                                         {bookTitle}
                                     </Title>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                                    <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
                                         <span>
                                             Nhà xuất bản: <Text strong>{bookData.publisher}</Text>
                                         </span>
@@ -196,72 +350,76 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
 
                 <Divider className="my-6" />
 
-                <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200">
-                    <Title level={4} className="text-gray-800 mb-4">
+                <Card className="border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50">
+                    <Title level={4} className="mb-2 text-gray-800">
                         👤 Thông tin người mượn
                     </Title>
-                    <p className="text-sm text-gray-600 mb-2">
-                        Hạn trả chính thức được ghi trên phiếu sau khi thư viện duyệt (ngày duyệt + {loanDaysMax} ngày theo
-                        nội quy).
-                    </p>
+
+                    {!profileComplete(dataUser) && (
+                        <Alert
+                            type="warning"
+                            showIcon
+                            className="mb-4"
+                            message="Hồ sơ chưa đủ thông tin"
+                            description={
+                                <span>
+                                    Vui lòng bổ sung <strong>họ tên</strong> và <strong>MSV</strong> (mã sinh viên) tại{' '}
+                                    <Link to="/infoUser" className="font-semibold text-blue-700 underline">
+                                        Trang cá nhân
+                                    </Link>{' '}
+                                    trước khi đặt mượn.
+                                </span>
+                            }
+                        />
+                    )}
+
+                    {dataUser && profileComplete(dataUser) && (
+                        <p className="mb-3 text-base text-slate-800">
+                            <span className="font-semibold">{dataUser.fullName || '—'}</span>
+                            <span className="mx-2 text-slate-400">;</span>
+                            <span className="font-mono font-medium text-slate-700">{msv}</span>
+                        </p>
+                    )}
+
+                    {profileComplete(dataUser) && maxQuantityThisRequest < 1 && remainingSlots < 1 && (
+                        <Alert
+                            type="warning"
+                            showIcon
+                            className="mb-4"
+                            message="Không thể đặt mượn thêm"
+                            description={`Bạn đang mượn/chờ duyệt ${activeBorrowQty} cuốn (tối đa ${effectiveBorrowCap} cuốn). Vui lòng trả sách hoặc chờ duyệt xong trước khi đặt thêm.`}
+                        />
+                    )}
+
+                    {profileComplete(dataUser) &&
+                        bookData &&
+                        maxQuantityThisRequest < 1 &&
+                        remainingSlots >= 1 &&
+                        remainingForTitle < 1 && (
+                            <Alert
+                                type="warning"
+                                showIcon
+                                className="mb-4"
+                                message="Đã đủ số cuốn của đầu sách này"
+                                description={`Với đầu sách đang chọn, bạn đã mượn/chờ duyệt ${activeSameTitleQty} cuốn (tối đa ${effectivePerTitleCap} cuốn cùng lúc theo chính sách). Trả bản hoặc hủy phiếu chờ duyệt để đặt thêm.`}
+                            />
+                        )}
+
                     <Form form={form} layout="vertical" onFinish={handleSubmit} requiredMark={false} preserve={false}>
                         <Row gutter={16}>
                             <Col xs={24} sm={12}>
                                 <Form.Item
-                                    name="fullName"
-                                    label="Họ và tên"
-                                    rules={[
-                                        { required: true, message: 'Vui lòng nhập họ và tên!' },
-                                        { min: 2, message: 'Họ tên phải có ít nhất 2 ký tự!' },
-                                    ]}
-                                >
-                                    <Input
-                                        prefix={<UserOutlined />}
-                                        placeholder="Nhập họ và tên đầy đủ"
-                                        className="h-10"
-                                    />
-                                </Form.Item>
-                            </Col>
-                            <Col xs={24} sm={12}>
-                                <Form.Item name="address" label="Địa chỉ">
-                                    <Input prefix={<IdcardOutlined />} placeholder="Nhập địa chỉ" className="h-10" />
-                                </Form.Item>
-                            </Col>
-                        </Row>
-
-                        <Row gutter={16}>
-                            <Col xs={24} sm={12}>
-                                <Form.Item
-                                    name="phoneNumber"
-                                    label="Số điện thoại"
-                                    rules={[
-                                        { required: true, message: 'Vui lòng nhập số điện thoại!' },
-                                        {
-                                            pattern: /^(0[3|5|7|8|9])+([0-9]{8})$/,
-                                            message: 'Số điện thoại không hợp lệ!',
-                                        },
-                                    ]}
-                                >
-                                    <Input
-                                        prefix={<PhoneOutlined />}
-                                        placeholder="Ví dụ: 0987654321"
-                                        className="h-10"
-                                        maxLength={10}
-                                    />
-                                </Form.Item>
-                            </Col>
-                            <Col xs={24} sm={12}>
-                                <Form.Item
                                     name="quantity"
-                                    label="Số lượng"
+                                    label={`Số lượng (tối đa ${Math.max(0, maxQuantityThisRequest)} cuốn — tồn ${bookData?.stock ?? 0}, chính sách tối đa ${effectivePerTitleCap} cuốn/đầu sách)`}
                                     rules={[{ required: true, message: 'Vui lòng nhập số lượng!' }]}
                                 >
                                     <InputNumber
-                                        min={1}
-                                        max={bookData?.stock}
+                                        min={maxQuantityThisRequest >= 1 ? 1 : 0}
+                                        max={maxQuantityThisRequest >= 1 ? maxQuantityThisRequest : 0}
+                                        disabled={maxQuantityThisRequest < 1}
                                         placeholder="Số lượng"
-                                        prefix={<BookOutlined />}
-                                        className="h-10"
+                                        addonBefore={<BookOutlined />}
+                                        className="h-10 w-full [&_.ant-input-number-input]:!h-10"
                                     />
                                 </Form.Item>
                             </Col>
@@ -269,7 +427,7 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
 
                         <Divider className="my-4" />
 
-                        <Title level={5} className="text-gray-800 mb-4">
+                        <Title level={5} className="mb-4 text-gray-800">
                             📅 Thời gian (dự kiến)
                         </Title>
 
@@ -291,7 +449,7 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
                                     rules={[{ validator: validateReturnDate }]}
                                 >
                                     <DatePicker
-                                        className="w-full h-10"
+                                        className="h-10 w-full"
                                         placeholder="Chọn ngày trả dự kiến"
                                         format="DD/MM/YYYY"
                                         showToday={false}
@@ -306,14 +464,14 @@ function ModalBorrowBook({ visible, onCancel, bookData }) {
                         </Row>
 
                         <div className="flex justify-end space-x-3 pt-4">
-                            <Button onClick={handleCancel} className="px-6 h-10">
+                            <Button onClick={handleCancel} className="h-10 px-6">
                                 Hủy bỏ
                             </Button>
                             <Button
                                 type="primary"
                                 htmlType="submit"
                                 loading={loading}
-                                className="px-6 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 border-none hover:from-blue-600 hover:to-indigo-700"
+                                className="h-10 border-none bg-gradient-to-r from-blue-500 to-indigo-600 px-6 hover:from-blue-600 hover:to-indigo-700"
                                 disabled={isSubmitDisabled}
                             >
                                 {loading ? 'Đang xử lý...' : '📚 Xác nhận mượn'}

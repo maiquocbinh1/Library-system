@@ -43,6 +43,7 @@ const PolicyManagement = () => {
         form.setFieldsValue({
             readerType: record.readerType,
             maxBooks: record.maxBooks,
+            maxCopiesPerTitle: record.maxCopiesPerTitle ?? 2,
             loanDays: record.loanDays,
             renewExtensionDays: record.renewExtensionDays ?? 7,
             overdueFinePerDay: record.overdueFinePerDay ?? 1000,
@@ -57,6 +58,7 @@ const PolicyManagement = () => {
         form.setFieldsValue({
             readerType: undefined,
             maxBooks: 3,
+            maxCopiesPerTitle: 2,
             loanDays: 14,
             renewExtensionDays: 7,
             overdueFinePerDay: 1000,
@@ -74,6 +76,7 @@ const PolicyManagement = () => {
             } else if (editing?.id) {
                 await requestUpdatePolicy(editing.id, {
                     maxBooks: values.maxBooks,
+                    maxCopiesPerTitle: values.maxCopiesPerTitle,
                     loanDays: values.loanDays,
                     renewExtensionDays: values.renewExtensionDays,
                     overdueFinePerDay: values.overdueFinePerDay,
@@ -124,6 +127,13 @@ const PolicyManagement = () => {
             render: () => <Tag color="blue">Sinh viên</Tag>,
         },
         { title: 'Tối đa mượn', dataIndex: 'maxBooks', key: 'maxBooks', width: 120 },
+        {
+            title: 'Tối đa / đầu sách',
+            dataIndex: 'maxCopiesPerTitle',
+            key: 'maxCopiesPerTitle',
+            width: 130,
+            render: (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : '2'),
+        },
         { title: 'Số ngày mượn', dataIndex: 'loanDays', key: 'loanDays', width: 130 },
         {
             title: 'Gia hạn mỗi lần',
@@ -165,7 +175,8 @@ const PolicyManagement = () => {
                     <div>
                         <h2 className="text-lg font-bold text-slate-900">Cấu hình chính sách mượn</h2>
                         <p className="text-sm text-slate-500">
-                            Số ngày mượn tối đa, gia hạn 7 ngày mỗi lần (tối đa 1 lần/phiếu), giới hạn ấn phẩm, mức phạt quá hạn.
+                            Số ngày mượn tối đa, gia hạn 7 ngày mỗi lần (tối đa 1 lần/phiếu), giới hạn ấn phẩm, giới hạn
+                            số cuốn cùng một đầu sách, mức phạt quá hạn.
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -207,6 +218,14 @@ const PolicyManagement = () => {
             >
                 <Form form={form} layout="vertical">
                     <Form.Item name="maxBooks" label="Số ấn phẩm tối đa" rules={[{ required: true }]}>
+                        <InputNumber min={1} className="w-full" />
+                    </Form.Item>
+                    <Form.Item
+                        name="maxCopiesPerTitle"
+                        label="Tối đa số cuốn cùng một đầu sách (cùng lúc)"
+                        rules={[{ required: true }]}
+                        extra="Tránh một sinh viên giữ quá nhiều bản cùng tiêu đề, để bạn khác còn mượn được."
+                    >
                         <InputNumber min={1} className="w-full" />
                     </Form.Item>
                     <Form.Item name="loanDays" label="Số ngày mượn tối đa" rules={[{ required: true }]}>

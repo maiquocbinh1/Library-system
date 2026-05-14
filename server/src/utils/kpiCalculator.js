@@ -12,6 +12,20 @@ function calendarDaysLate(dueDate, at) {
     return Math.max(0, Math.floor((d1.getTime() - d0.getTime()) / 86400000));
 }
 
+/** Nhãn thể loại cho DSS: ưu tiên category, fallback ngôn ngữ / NXB để tránh toàn bộ gom vào "Khác". */
+function categoryLabelFromBook(book) {
+    if (!book) return 'Chưa liên kết đầu sách';
+    const c1 = String(book.category_1 || '').trim();
+    if (c1) return c1;
+    const c0 = String(book.category || '').trim();
+    if (c0) return c0;
+    const lang = String(book.language || '').trim();
+    if (lang) return `Ngôn ngữ · ${lang}`;
+    const pub = String(book.publisher || book.publishingCompany || '').trim();
+    if (pub) return pub.length > 48 ? `${pub.slice(0, 45)}…` : pub;
+    return 'Không phân loại';
+}
+
 /**
  * KPI 1: Tỷ lệ khai thác kho sách
  * (số bản sao đang borrowed / tổng bản sao) * 100
@@ -93,7 +107,6 @@ async function getCategoryTrends(period = 'all') {
         matchStage.borrowDate = { $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) };
     }
 
-    const BookCopyMongo = require('../models/bookCopy.mongo.model');
     const tickets = await LoanTicketMongo.find(matchStage).lean();
     const copyIds = tickets.flatMap((t) => t.bookCopyIds || []);
 
@@ -116,7 +129,7 @@ async function getCategoryTrends(period = 'all') {
             const copy = copyMap.get(String(copyId));
             if (!copy) continue;
             const book = bookMap.get(String(copy.bookId)) || bookMap.get(String(copy.mysqlId || ''));
-            const cat = (book?.category_1 || book?.category || 'Khác').trim();
+            const cat = categoryLabelFromBook(book);
             categoryCount[cat] = (categoryCount[cat] || 0) + 1;
         }
     }
@@ -161,7 +174,7 @@ async function getDrilldown(category, period = 'all') {
             if (!copy) continue;
             const book = bookMap.get(String(copy.bookId)) || bookMap.get(String(copy.mysqlId || ''));
             if (!book) continue;
-            const cat = (book?.category_1 || book?.category || 'Khác').trim();
+            const cat = categoryLabelFromBook(book);
             if (cat !== category) continue;
             const title = book.title || book.nameProduct || 'Không rõ';
             titleCount[title] = (titleCount[title] || 0) + 1;

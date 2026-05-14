@@ -7,7 +7,14 @@ const { connectSeedMongo, disconnectSeedMongo } = require('./mongoSeedConnect');
 const PolicyMongo = require('../models/policy.mongo.model');
 
 const SEED = [
-    { readerType: 'SinhVien_ChinhQuy', maxBooks: 8, loanDays: 14, renewExtensionDays: 7, overdueFinePerDay: 1000 },
+    {
+        readerType: 'SinhVien_ChinhQuy',
+        maxBooks: 8,
+        maxCopiesPerTitle: 2,
+        loanDays: 14,
+        renewExtensionDays: 7,
+        overdueFinePerDay: 1000,
+    },
 ];
 
 async function run() {
@@ -21,6 +28,7 @@ async function run() {
                 {
                     $set: {
                         maxBooks: row.maxBooks,
+                        maxCopiesPerTitle: row.maxCopiesPerTitle ?? 2,
                         loanDays: row.loanDays,
                         renewExtensionDays: row.renewExtensionDays ?? 7,
                         overdueFinePerDay: row.overdueFinePerDay,
@@ -30,6 +38,7 @@ async function run() {
             );
             console.log(`[seedPolicies] OK ${row.readerType}:`, {
                 maxBooks: doc.maxBooks,
+                maxCopiesPerTitle: doc.maxCopiesPerTitle,
                 loanDays: doc.loanDays,
                 renewExtensionDays: doc.renewExtensionDays,
                 overdueFinePerDay: doc.overdueFinePerDay,

@@ -3,7 +3,12 @@ import { Card, Empty, List, Image, Typography, Space, Spin, Button } from 'antd'
 import { requestCancelBook } from '../../config/request';
 import dayjs from 'dayjs';
 import { toast } from 'react-toastify';
-import { isPendingApproval, loanStatusMeta, normalizeLoanStatusKey } from '../../utils/loanTicketStatus';
+import {
+    isPendingApproval,
+    isReadyForPickup,
+    loanStatusMeta,
+    normalizeLoanStatusKey,
+} from '../../utils/loanTicketStatus';
 import { PLACEHOLDER_BOOK_COVER, resolveBookCoverUrl } from '../../utils/resolveBookCoverUrl';
 
 const { Text, Title } = Typography;
@@ -79,10 +84,12 @@ const BorrowingHistory = ({ loans = [], loading, onRefresh }) => {
                                                 <Text type="secondary">
                                                     Hạn trả:{' '}
                                                     {isPendingApproval(item.status)
-                                                        ? 'Sau khi thư viện duyệt'
-                                                        : due
-                                                          ? due.format('DD/MM/YYYY')
-                                                          : '—'}
+                                                        ? 'Sau khi thư viện xác nhận yêu cầu'
+                                                        : isReadyForPickup(item.status)
+                                                          ? 'Sau khi lập phiếu tại quầy'
+                                                          : due
+                                                            ? due.format('DD/MM/YYYY')
+                                                            : '—'}
                                                 </Text>
                                                 {showCountdown && (
                                                     <p className="text-rose-600">
@@ -102,7 +109,9 @@ const BorrowingHistory = ({ loans = [], loading, onRefresh }) => {
                                                             ? 'bg-rose-100 text-rose-800'
                                                             : statusInfo.color === 'gold'
                                                               ? 'bg-amber-100 text-amber-900'
-                                                              : 'bg-slate-100 text-slate-700'
+                                                              : statusInfo.color === 'cyan'
+                                                                ? 'bg-cyan-100 text-cyan-900'
+                                                                : 'bg-slate-100 text-slate-700'
                                                 }`}
                                             >
                                                 {statusInfo.text}
@@ -110,7 +119,7 @@ const BorrowingHistory = ({ loans = [], loading, onRefresh }) => {
                                             <Text type="secondary" className="text-xs">
                                                 Mã mượn: {String(item.id || '').substring(0, 8)}
                                             </Text>
-                                            {isPendingApproval(item.status) && (
+                                            {(isPendingApproval(item.status) || isReadyForPickup(item.status)) && (
                                                 <Button danger type="primary" onClick={() => handleCancelBook(item.id)}>
                                                     Huỷ mượn
                                                 </Button>
