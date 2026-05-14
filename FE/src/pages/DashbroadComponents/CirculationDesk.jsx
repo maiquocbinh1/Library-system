@@ -136,7 +136,7 @@ const CART_QUICK_FILL_MAX = 3;
 
 const CirculationDesk = () => {
     const [searchParams] = useSearchParams();
-    /** Dev, hoặc ?prefillCart=1 / ?gio=1 — hiện nút “Thêm nhanh từ kho” + tự điền giỏ khi chọn độc giả. */
+    /** Dev, hoặc ?prefillCart=1 / ?gio=1 — hiện nút «Thêm nhanh từ kho»; tự điền giỏ chỉ khi có ?gio / ?prefillCart hoặc MSV seed. */
     const showCartQuickFill =
         import.meta.env.DEV ||
         ['1', 'true'].includes(String(searchParams.get('prefillCart') || '').trim().toLowerCase()) ||
@@ -452,9 +452,10 @@ const CirculationDesk = () => {
     );
 
     /**
-     * Tự thêm tối đa 3 bản AVAILABLE từ kho vào giỏ sau khi chọn độc giả:
-     * - Môi trường dev, hoặc URL ?gio=1 / ?prefillCart=1: mọi độc giả.
-     * - Production không tham số: chỉ các MSV trùng bộ seed (đồng bộ constants).
+     * Tự thêm tối đa 3 bản AVAILABLE từ kho vào giỏ sau khi chọn độc giả (chỉ khi bật rõ ràng):
+     * - URL ?gio=1 hoặc ?prefillCart=1, hoặc
+     * - MSV thuộc bộ seed (đồng bộ constants).
+     * Không tự chạy chỉ vì môi trường dev — mượn offline cần giỏ trống rồi quét mã tay.
      */
     useEffect(() => {
         if (!patron) {
@@ -469,7 +470,6 @@ const CirculationDesk = () => {
 
         const sid = String(patron.studentId || '').trim();
         const gioOn =
-            import.meta.env.DEV ||
             ['1', 'true'].includes(String(searchParams.get('gio') || '').trim().toLowerCase()) ||
             ['1', 'true'].includes(String(searchParams.get('prefillCart') || '').trim().toLowerCase());
         const isSamplePatron = SAMPLE_STUDENT_ID_SET.has(sid);
@@ -808,7 +808,7 @@ const CirculationDesk = () => {
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
                 <Card
                     className="rounded-2xl border border-slate-200/90 bg-white shadow-sm xl:col-span-5"
-                    bodyStyle={{ padding: 20 }}
+                    styles={{ body: { padding: 20 } }}
                     loading={loading}
                 >
                     <div className="mb-6 flex flex-col gap-2 sm:flex-row">
@@ -1156,7 +1156,7 @@ const CirculationDesk = () => {
 
                 <Card
                     className="rounded-2xl border border-slate-200/90 bg-white shadow-sm xl:col-span-7"
-                    bodyStyle={{ padding: 20 }}
+                    styles={{ body: { padding: 20 } }}
                     title={
                         mainTab === 'lap' ? (
                             <span className="inline-flex items-center gap-2 font-bold text-slate-900">
@@ -1223,11 +1223,15 @@ const CirculationDesk = () => {
                                     <span>Chưa có sách trong giỏ</span>
                                     {!patron ? (
                                         <span className="text-xs text-slate-500">
-                                            Chọn độc giả ở bước 1 — nếu kho có sách sẵn sàng, giỏ có thể được lấp
-                                            tự động (localhost hoặc thêm{' '}
-                                            <code className="rounded bg-slate-200/80 px-1">?gio=1</code> vào URL).
+                                            Chọn độc giả ở bước 1 — mượn offline: nhập mã bản sao ở bước 2. Muốn thử tự lấp từ kho,
+                                            thêm <code className="rounded bg-slate-200/80 px-1">?gio=1</code> vào URL (hoặc MSV demo
+                                            seed).
                                         </span>
-                                    ) : null}
+                                    ) : (
+                                        <span className="text-xs text-slate-500">
+                                            Mượn tại quầy: gõ mã bản sao ở bước 2 — tên sách và mã sẽ hiện ở đây sau khi thêm.
+                                        </span>
+                                    )}
                                 </div>
                             ) : (
                                 <Table

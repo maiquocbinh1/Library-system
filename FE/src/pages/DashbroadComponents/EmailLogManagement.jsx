@@ -364,7 +364,7 @@ const EmailLogManagement = () => {
                 onCancel={() => setPreview((p) => ({ ...p, open: false }))}
                 footer={<Button type="primary" onClick={() => setPreview((p) => ({ ...p, open: false }))}>Đóng</Button>}
                 width={640}
-                destroyOnClose
+                destroyOnHidden
             >
                 <div
                     className="max-h-[60vh] overflow-y-auto text-sm leading-relaxed text-slate-800 [&_p]:mb-2"

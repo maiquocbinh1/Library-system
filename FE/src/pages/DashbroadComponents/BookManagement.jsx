@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Table, Button, Input, Modal, Form, InputNumber, Select, Upload, Popconfirm, Typography, Card, Row, Col, message, Tag } from 'antd';
+import { Table, Button, Input, Modal, Form, InputNumber, Select, Upload, Popconfirm, Typography, Card, Row, Col, message, Tag, Space } from 'antd';
 import { UploadOutlined, PlusOutlined, DeleteOutlined, SaveOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
     requestCreateProduct,
@@ -66,9 +66,6 @@ const BookManagement = () => {
                 // Luôn ưu tiên Mongo _id để update/delete ổn định
                 id: item?._id ? String(item._id) : String(item?.id || item?.mysqlId || ''),
             }));
-            // Mở tab Console trên trình duyệt và kiểm tra normalized.length.
-            // Nếu length = 158 thì Ant Design Table sẽ tự động phân trang toàn bộ dữ liệu.
-            console.log('BookManagement products:', normalized);
             setData([...normalized].sort(compareByBookCodeAsc));
         } catch (error) {
             console.error('Failed to fetch books:', error);
@@ -148,12 +145,13 @@ const BookManagement = () => {
     const onAddFinish = async (values) => {
         try {
             setLoading(true);
-            if (!values.image?.fileList || values.image.fileList.length === 0) {
+            const imageList = Array.isArray(values.image) ? values.image : values.image?.fileList ?? [];
+            if (!imageList.length) {
                 message.error('Vui lòng chọn ảnh bìa');
                 return;
             }
             const formData = new FormData();
-            formData.append('image', values.image.fileList[0].originFileObj);
+            formData.append('image', imageList[0].originFileObj);
             const urlImage = await requestUploadImageProduct(formData);
 
             const stockNum = Number(values.stock);
@@ -441,7 +439,7 @@ const BookManagement = () => {
                 />
             </div>
 
-            <Card className="shrink-0 rounded-2xl shadow-sm" bodyStyle={{ padding: 14 }}>
+            <Card className="shrink-0 rounded-2xl shadow-sm" styles={{ body: { padding: 14 } }}>
                 <div className="flex flex-col gap-4 lg:flex-row">
                     <div className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 shadow-sm lg:w-56">
                         {selectedImageSrc ? (
@@ -558,7 +556,7 @@ const BookManagement = () => {
                 </div>
             </Card>
 
-            <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 12 }}>
+            <Card className="rounded-2xl shadow-sm" styles={{ body: { padding: 12 } }}>
                 <Table
                     columns={columns}
                     dataSource={filteredData}
@@ -616,12 +614,15 @@ const BookManagement = () => {
                                     className="mt-3 mb-0 [&_.ant-form-item-control-input-content]:flex [&_.ant-form-item-control-input-content]:justify-center"
                                     name="image"
                                     label="Ảnh bìa"
+                                    valuePropName="fileList"
+                                    getValueFromEvent={(e) => (Array.isArray(e) ? e : e?.fileList ?? [])}
                                     rules={[{ required: true, message: 'Vui lòng tải lên ảnh bìa!' }]}
                                 >
                                     <Upload
                                         name="image"
                                         beforeUpload={() => false}
                                         maxCount={1}
+                                        listType="picture"
                                         showUploadList={false}
                                         className="flex justify-center"
                                         onChange={({ fileList }) => {
@@ -668,19 +669,12 @@ const BookManagement = () => {
                                     },
                                 ]}
                             >
-                                <Input
-                                    className="rounded-xl"
-                                    placeholder="Ví dụ: BO-001"
-                                    addonAfter={
-                                        <Button
-                                            type="link"
-                                            className="px-0"
-                                            onClick={() => addForm.setFieldsValue({ bookCode: nextBoCodeFromList(data) })}
-                                        >
-                                            Tạo mã BO-STT
-                                        </Button>
-                                    }
-                                />
+                                <Space.Compact className="w-full">
+                                    <Input className="min-w-0 flex-1 rounded-xl" placeholder="Ví dụ: BO-001" />
+                                    <Button type="default" onClick={() => addForm.setFieldsValue({ bookCode: nextBoCodeFromList(data) })}>
+                                        Tạo mã BO-STT
+                                    </Button>
+                                </Space.Compact>
                             </Form.Item>
 
                             <Row gutter={16}>

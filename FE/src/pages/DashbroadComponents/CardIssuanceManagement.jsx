@@ -99,7 +99,7 @@ const CardIssuanceManagement = () => {
     return (
         <div>
             <h2 className="text-2xl mb-4 font-bold">Kích hoạt tài khoản Độc giả</h2>
-            <Card className="mb-4 rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
+            <Card className="mb-4 rounded-2xl shadow-sm" styles={{ body: { padding: 16 } }}>
                 <Form
                     form={form}
                     onFinish={onCardFormFinish}

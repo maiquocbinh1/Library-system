@@ -66,7 +66,7 @@ async function main() {
             title: 'Xác nhận mượn sách',
             contentHtml: `<p>Xin chào <b>${u?.fullName || 'Độc giả'}</b>, phiếu mượn đã được xác nhận.</p>
               <p>Email: ${u?.email || '—'} · Hạn trả: <b>${new Date(now + 86400000 * 14).toLocaleDateString('vi-VN')}</b></p>`,
-            senderEmail: 'no-reply@library.ptit.edu.vn',
+            senderEmail: 'no-reply@thuvien.local',
             senderName: 'Hệ thống thư viện',
             recipientUserId: u?._id ? String(u._id) : '',
             status: 'RESOLVED',
@@ -86,8 +86,8 @@ async function main() {
         type: 'SYSTEM',
         title: 'Thông báo toàn hệ thống',
         contentHtml:
-            '<p>Thư viện PTIT gửi thông báo tới toàn thể độc giả: cập nhật quy định mượn/trả và thời gian phục vụ Tết.</p>',
-        senderEmail: 'no-reply@library.ptit.edu.vn',
+            '<p>Thư viện gửi thông báo tới toàn thể độc giả: cập nhật quy định mượn/trả và thời gian phục vụ Tết.</p>',
+        senderEmail: 'no-reply@thuvien.local',
         senderName: 'Ban quản trị',
         status: 'RESOLVED',
         deliveryStatus: 'success',
@@ -107,7 +107,7 @@ async function main() {
             type: 'BORROW_CONFIRM',
             title: 'Xác nhận mượn sách (lỗi gửi)',
             contentHtml: `<p>Gửi thông báo xác nhận tới <b>${u?.email || 'độc giả'}</b> thất bại (hộp thư đầy / từ chối).</p>`,
-            senderEmail: 'no-reply@library.ptit.edu.vn',
+            senderEmail: 'no-reply@thuvien.local',
             senderName: 'Hệ thống thư viện',
             recipientUserId: u?._id ? String(u._id) : '',
             status: 'RESOLVED',

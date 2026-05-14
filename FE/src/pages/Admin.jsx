@@ -63,6 +63,9 @@ const VIEW_COMPONENTS = {
 
 const ADMIN_VIEW_KEYS = new Set(Object.keys(VIEW_COMPONENTS));
 
+/** Chỉ admin: quản lý nhân sự & chính sách (nhóm menu Hệ thống). Thủ thư / kho không được URL trực tiếp. */
+const ADMIN_ONLY_VIEW_KEYS = new Set(['personnel', 'policy']);
+
 /** Submenu cha (Ant Menu `openKeys`) — chỉ một nhóm mở để sidebar không phải kéo dài */
 function getParentSubmenuKeyForLeaf(leafKey, isAdmin) {
     if (leafKey === 'stats') return 'overview';
@@ -193,6 +196,7 @@ function Admin() {
     const menuItems = useMemo(() => buildMenuItems(isAdmin), [isAdmin]);
 
     useEffect(() => {
+        if (!dataUser?.id) return;
         const p = (location.pathname || '').replace(/\/+$/, '') || '/';
         const prefix = '/admin/';
         if (p.startsWith(prefix)) {
@@ -201,11 +205,16 @@ function Admin() {
                 navigate('/admin', { replace: true });
                 return;
             }
+            if (!isAdmin && seg && ADMIN_ONLY_VIEW_KEYS.has(seg)) {
+                navigate('/admin', { replace: true });
+                return;
+            }
         }
         const leaf = adminKeyFromPathname(location.pathname);
-        setSelectedKey(leaf);
-        setOpenKeys([getParentSubmenuKeyForLeaf(leaf, isAdmin)]);
-    }, [location.pathname, navigate, isAdmin]);
+        const safeLeaf = !isAdmin && ADMIN_ONLY_VIEW_KEYS.has(leaf) ? 'stats' : leaf;
+        setSelectedKey(safeLeaf);
+        setOpenKeys([getParentSubmenuKeyForLeaf(safeLeaf, isAdmin)]);
+    }, [location.pathname, navigate, isAdmin, dataUser?.id]);
 
     const currentTabTitle = useMemo(() => {
         return findMenuLabel(menuItems, selectedKey) || 'Dashboard';
@@ -214,6 +223,7 @@ function Admin() {
     const staffSubtitle = useMemo(() => {
         const r = String(dataUser?.role || '').toLowerCase();
         if (r === 'librarian') return 'Thủ thư';
+        if (r === 'warehouse') return 'Nhân viên kho';
         if (r === 'admin') return 'Quản trị viên';
         return '';
     }, [dataUser?.role]);
@@ -269,7 +279,7 @@ function Admin() {
                     }}
                 >
                     <Typography.Text style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.75)' }}>
-                        THƯ VIỆN PTIT
+                        THƯ VIỆN
                     </Typography.Text>
                     <Typography.Text style={{ fontSize: 14, fontWeight: 700, color: '#fff', marginTop: 4 }}>Hệ thống quản lý</Typography.Text>
                 </div>
@@ -291,6 +301,7 @@ function Admin() {
                         setOpenKeys(newlyOpened ? [newlyOpened] : [subs[subs.length - 1]]);
                     }}
                     onClick={({ key }) => {
+                        if (!isAdmin && ADMIN_ONLY_VIEW_KEYS.has(key)) return;
                         if (Object.prototype.hasOwnProperty.call(VIEW_COMPONENTS, key)) {
                             setSelectedKey(key);
                             setOpenKeys([getParentSubmenuKeyForLeaf(key, isAdmin)]);

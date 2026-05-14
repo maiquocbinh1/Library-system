@@ -3,7 +3,17 @@ import {
     Row, Col, Card, Statistic, Modal, Table, Input, Select, Tag,
     Button, Slider, Progress, message, Tooltip, Form, Spin,
 } from 'antd';
-import { Bar } from '@ant-design/charts';
+import {
+    ResponsiveContainer,
+    BarChart,
+    Bar,
+    Cell,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip as RechartsTooltip,
+    LabelList,
+} from 'recharts';
 import {
     UserOutlined, BookOutlined, SolutionOutlined, ReadOutlined,
     WarningOutlined, DollarCircleOutlined, BarChartOutlined,
@@ -23,10 +33,44 @@ import { compareByBookCodeAsc } from '../../utils/bookCodeSort';
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const fmtVnd = (v) => Number(v || 0).toLocaleString('vi-VN') + ' đ';
 
+/** Màu cột lần lượt (tương đương gradient trong bản @ant-design/charts Column) */
+const DSS_COLUMN_FILLS = [
+    '#6366f1',
+    '#0ea5e9',
+    '#f59e0b',
+    '#10b981',
+    '#ef4444',
+    '#8b5cf6',
+    '#ec4899',
+    '#14b8a6',
+];
+
+const DSS_CHART_CARD =
+    'rounded-xl border border-slate-200/90 bg-white shadow-[0_4px_24px_-8px_rgba(15,23,42,0.1)]';
+
+function DssCategoryTooltip({ active, payload }) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0]?.payload;
+    const cat = row?.category ?? '—';
+    const n = row?.count ?? payload[0]?.value ?? 0;
+    return (
+        <div
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-md"
+            style={{ boxShadow: '0 6px 20px rgba(15, 23, 42, 0.1)' }}
+        >
+            <div className="text-xs font-semibold text-slate-500">Thể loại</div>
+            <div className="font-semibold text-slate-900">{cat}</div>
+            <div className="mt-1.5 text-slate-600">
+                Lượt mượn: <span className="font-bold text-indigo-600">{n} lượt</span>
+            </div>
+        </div>
+    );
+}
+
 // ─── EIS KPI Card ─────────────────────────────────────────────────────────────
 function KpiCard({ title, subtitle, value, percent, progressColor, extra, pulse }) {
     return (
-        <Card className="rounded-2xl shadow-sm h-full" bodyStyle={{ padding: 16 }}>
+        <Card className="rounded-2xl shadow-sm h-full" styles={{ body: { padding: 16 } }}>
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">{title}</div>
             {subtitle && <div className="text-[11px] text-slate-400 mb-2">{subtitle}</div>}
             <div className={`text-3xl font-bold mb-3 ${pulse ? 'animate-pulse text-red-500' : 'text-slate-800'}`}>
@@ -261,28 +305,19 @@ const Statistics = () => {
         );
     }, [pendingRequests, pendingSearchText]);
 
-    // ── trend chart config ────────────────────────────────────────────────────
-    const trendChartData = (trendData.labels || []).map((label, i) => ({
-        category: label,
-        count: trendData.data[i] || 0,
-    }));
+    // ── DSS: thể loại (X) × lượt mượn (Y) — cùng dữ liệu / drilldown như bản Column ──
+    const trendChartData = useMemo(
+        () =>
+            (trendData.labels || []).map((label, i) => ({
+                category: label,
+                count: Number(trendData.data[i] || 0),
+            })),
+        [trendData.labels, trendData.data],
+    );
 
-    const trendBarConfig = {
-        data: trendChartData,
-        xField: 'category',
-        yField: 'count',
-        color: '#6366f1',
-        label: { position: 'top', style: { fill: '#475569', fontSize: 11 } },
-        xAxis: { title: null },
-        yAxis: { title: { text: 'Lượt mượn' } },
-        tooltip: { formatter: (d) => ({ name: d.category, value: d.count + ' lượt' }) },
-        barStyle: { radius: [6, 6, 0, 0] },
-        onReady: (plot) => {
-            plot.on('element:click', (e) => {
-                const cat = e?.data?.data?.category;
-                if (cat) openDrilldown(cat);
-            });
-        },
+    const handleDssColumnClick = (data) => {
+        const cat = data?.payload?.category;
+        if (cat) openDrilldown(cat);
     };
 
     // ── EIS overdue badge ─────────────────────────────────────────────────────
@@ -350,12 +385,12 @@ const Statistics = () => {
             {/* ── Basic stats ────────────────────────────────────────────────── */}
             <Row gutter={16}>
                 <Col span={8}>
-                    <Card hoverable onClick={() => { setIsUsersModalOpen(true); if (!users.length) fetchUsers(); }} className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
+                    <Card hoverable onClick={() => { setIsUsersModalOpen(true); if (!users.length) fetchUsers(); }} className="rounded-2xl shadow-sm" styles={{ body: { padding: 16 } }}>
                         <Statistic title={<span className="text-slate-500">Tổng người dùng</span>} value={data?.totalUsers || 0} prefix={<UserOutlined className="text-blue-600" />} />
                     </Card>
                 </Col>
                 <Col span={8}>
-                    <Card hoverable onClick={() => { setIsBooksModalOpen(true); if (!books.length) fetchBooks(); }} className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
+                    <Card hoverable onClick={() => { setIsBooksModalOpen(true); if (!books.length) fetchBooks(); }} className="rounded-2xl shadow-sm" styles={{ body: { padding: 16 } }}>
                         <Statistic title={<span className="text-slate-500">Tổng đầu sách</span>} value={data?.totalBooks || 0} prefix={<BookOutlined className="text-purple-600" />} />
                     </Card>
                 </Col>
@@ -367,7 +402,7 @@ const Statistics = () => {
                             refreshPendingSection();
                         }}
                         className="rounded-2xl shadow-sm"
-                        bodyStyle={{ padding: 16 }}
+                        styles={{ body: { padding: 16 } }}
                     >
                         <Statistic title={<span className="text-slate-500">Yêu cầu chờ duyệt</span>} value={data?.pendingRequests || 0} prefix={<SolutionOutlined className="text-emerald-600" />} />
                     </Card>
@@ -476,8 +511,8 @@ const Statistics = () => {
                 {/* Trend chart */}
                 <Col xs={24} xl={16}>
                     <Card
-                        className="rounded-2xl shadow-sm h-full"
-                        bodyStyle={{ padding: 16 }}
+                        className={`h-full ${DSS_CHART_CARD}`}
+                        styles={{ body: { padding: 16 } }}
                         title={
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <span className="font-semibold">DSS — Xu hướng mượn theo thể loại</span>
@@ -499,11 +534,80 @@ const Statistics = () => {
                         <Spin spinning={trendLoading}>
                             {trendChartData.length > 0 ? (
                                 <>
-                                    <p className="mb-2 text-xs text-slate-400">Click vào cột để xem Top 5 sách của thể loại đó</p>
-                                    <Bar {...trendBarConfig} height={260} />
+                                    <p className="mb-2 text-xs text-slate-500">
+                                        Trục ngang: <b>thể loại</b> — Trục dọc: <b>số lượng</b> (lượt mượn). Click cột để xem Top 5 sách.
+                                    </p>
+                                    <div className="h-[300px] w-full min-w-0">
+                                        <ResponsiveContainer width="100%" height={300}>
+                                            <BarChart
+                                                key={trendPeriod}
+                                                data={trendChartData}
+                                                margin={{ top: 24, right: 12, left: 4, bottom: 52 }}
+                                                barCategoryGap="14%"
+                                            >
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                <XAxis
+                                                    dataKey="category"
+                                                    tick={{ fontSize: 12, fontWeight: 600, fill: '#374151' }}
+                                                    axisLine={{ stroke: '#e2e8f0' }}
+                                                    tickLine={false}
+                                                    interval={0}
+                                                    angle={trendChartData.length > 6 ? -24 : 0}
+                                                    textAnchor={trendChartData.length > 6 ? 'end' : 'middle'}
+                                                    height={trendChartData.length > 6 ? 52 : 36}
+                                                    label={{
+                                                        value: 'Thể loại',
+                                                        position: 'insideBottom',
+                                                        offset: -2,
+                                                        fill: '#475569',
+                                                        fontSize: 12,
+                                                        fontWeight: 700,
+                                                    }}
+                                                />
+                                                <YAxis
+                                                    tick={{ fontSize: 11, fill: '#9ca3af' }}
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                    allowDecimals={false}
+                                                    width={40}
+                                                    label={{
+                                                        value: 'Lượt mượn',
+                                                        angle: -90,
+                                                        position: 'insideLeft',
+                                                        style: { textAnchor: 'middle', fill: '#6b7280', fontSize: 12 },
+                                                    }}
+                                                />
+                                                <RechartsTooltip
+                                                    cursor={{ fill: 'rgba(99, 102, 241, 0.06)' }}
+                                                    content={<DssCategoryTooltip />}
+                                                />
+                                                <Bar
+                                                    dataKey="count"
+                                                    radius={[8, 8, 0, 0]}
+                                                    maxBarSize={64}
+                                                    cursor="pointer"
+                                                    animationDuration={900}
+                                                    animationEasing="ease-out"
+                                                    isAnimationActive
+                                                    onClick={handleDssColumnClick}
+                                                    activeBar={{ stroke: '#c7d2fe', strokeWidth: 2, opacity: 0.95 }}
+                                                >
+                                                    {trendChartData.map((_, i) => (
+                                                        <Cell key={`cell-${i}`} fill={DSS_COLUMN_FILLS[i % DSS_COLUMN_FILLS.length]} />
+                                                    ))}
+                                                    <LabelList
+                                                        dataKey="count"
+                                                        position="top"
+                                                        formatter={(v) => (Number(v) > 0 ? String(v) : '')}
+                                                        style={{ fill: '#4f46e5', fontSize: 11, fontWeight: 700 }}
+                                                    />
+                                                </Bar>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
                                 </>
                             ) : (
-                                <div className="flex h-64 items-center justify-center text-slate-400">Chưa có dữ liệu mượn</div>
+                                <div className="flex h-[300px] items-center justify-center text-slate-400">Chưa có dữ liệu mượn</div>
                             )}
                         </Spin>
                     </Card>
@@ -511,7 +615,7 @@ const Statistics = () => {
 
                 {/* What-If */}
                 <Col xs={24} xl={8}>
-                    <Card className="rounded-2xl shadow-sm h-full" bodyStyle={{ padding: 16 }} title={<span className="font-semibold">DSS — Mô phỏng chính sách (What-If)</span>}>
+                    <Card className="rounded-2xl shadow-sm h-full" styles={{ body: { padding: 16 } }} title={<span className="font-semibold">DSS — Mô phỏng chính sách (What-If)</span>}>
                         <div className="space-y-4">
                             <div>
                                 <div className="mb-1 text-xs text-slate-500">Thời gian mượn tối đa (ngày): <b>{whatIfMaxDays}</b></div>
@@ -553,7 +657,7 @@ const Statistics = () => {
             {/* ── Bảng cảnh báo: Độc giả rủi ro cao ───────────────────────────── */}
             <Card
                 className="rounded-2xl shadow-sm"
-                bodyStyle={{ padding: 16 }}
+                styles={{ body: { padding: 16 } }}
                 title={
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-semibold text-red-600">⚠ Cảnh báo — Độc giả rủi ro cao</span>
@@ -575,7 +679,7 @@ const Statistics = () => {
             {/* ── Bảng: Sách ít tương tác ─────────────────────────────────────── */}
             <Card
                 className="rounded-2xl shadow-sm"
-                bodyStyle={{ padding: 16 }}
+                styles={{ body: { padding: 16 } }}
                 title={
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-semibold text-amber-600">📦 Gợi ý — Sách ít tương tác (0 lượt mượn trong 6 tháng)</span>

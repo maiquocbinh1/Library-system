@@ -170,7 +170,7 @@ const PolicyManagement = () => {
 
     return (
         <div className="flex flex-col gap-4">
-            <Card className="rounded-xl border-slate-200 shadow-sm" bodyStyle={{ padding: 16 }}>
+            <Card className="rounded-xl border-slate-200 shadow-sm" styles={{ body: { padding: 16 } }}>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <h2 className="text-lg font-bold text-slate-900">Cấu hình chính sách mượn</h2>

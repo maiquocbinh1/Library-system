@@ -6,7 +6,7 @@ function AdminRoute({ children }) {
     const { dataUser } = useStore();
     const hasSession = Boolean(cookies.get('logged'));
     const role = String(dataUser?.role || '').toLowerCase();
-    const isLibraryStaff = role === 'admin' || role === 'librarian';
+    const isLibraryStaff = role === 'admin' || role === 'librarian' || role === 'warehouse';
 
     if (hasSession && !dataUser?.id) {
         return <div className="pt-24 text-center text-gray-500">Đang xác thực tài khoản...</div>;

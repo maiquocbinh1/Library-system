@@ -75,7 +75,7 @@ const Sidebar = ({ activeComponent, setActiveComponent }) => {
                         📚
                     </span>
                     <span className="text-lg font-bold tracking-tight text-slate-800">
-                        Thư viện <span className="text-violet-600">PTIT</span>
+                        Thư viện
                     </span>
                 </Link>
                 <Menu

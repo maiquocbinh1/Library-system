@@ -61,7 +61,7 @@ function LoginUser() {
             const res = await requestLogin(values);
             const meta = res?.data?.metadata;
             const role = String(meta?.user?.role || '').toLowerCase();
-            const target = role === 'admin' || role === 'librarian' ? '/admin' : '/';
+            const target = role === 'admin' || role === 'librarian' || role === 'warehouse' ? '/admin' : '/';
 
             await refreshAuth();
             message.success('Đăng nhập thành công!');

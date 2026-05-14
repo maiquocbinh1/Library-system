@@ -560,22 +560,18 @@ const UserManagement = () => {
                         name="readerCode"
                         rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập MSV hoặc MSG!' }]}
                     >
-                        <Input
-                            className="rounded-xl"
-                            placeholder="Mã sinh viên hoặc mã giảng viên/cán bộ"
-                            addonAfter={
-                                <Button
-                                    type="link"
-                                    className="px-0"
-                                    onClick={() => {
-                                        const code = `PTIT${Math.floor(100000 + Math.random() * 900000)}`;
-                                        cardForm.setFieldsValue({ readerCode: code });
-                                    }}
-                                >
-                                    Tự sinh
-                                </Button>
-                            }
-                        />
+                        <Space.Compact className="w-full">
+                            <Input className="min-w-0 flex-1 rounded-xl" placeholder="Mã sinh viên hoặc mã giảng viên/cán bộ" />
+                            <Button
+                                type="default"
+                                onClick={() => {
+                                    const code = `TV${Math.floor(100000 + Math.random() * 900000)}`;
+                                    cardForm.setFieldsValue({ readerCode: code });
+                                }}
+                            >
+                                Tự sinh
+                            </Button>
+                        </Space.Compact>
                     </Form.Item>
                 </Form>
             </Modal>

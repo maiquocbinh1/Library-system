@@ -33,7 +33,7 @@ function ForgotPassword() {
 
                     <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-700">
                         <p className="m-0">
-                            - Vui lòng đến quầy thư viện PTIT để xác minh và đặt lại mật khẩu.
+                            - Vui lòng đến quầy thư viện để xác minh và đặt lại mật khẩu.
                         </p>
                         <p className="m-0 mt-2">
                             - Mang theo thẻ sinh viên/giấy tờ tùy thân khi yêu cầu hỗ trợ.
@@ -56,7 +56,7 @@ function ForgotPassword() {
                                     { type: 'email', message: 'Email không hợp lệ' },
                                 ]}
                             >
-                                <Input placeholder="vd: b21dcn001@stu.ptit.edu.vn" />
+                                <Input placeholder="vd: docgia@email.com" />
                             </Form.Item>
                             <Form.Item
                                 name="studentId"

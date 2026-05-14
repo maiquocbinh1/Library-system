@@ -302,7 +302,7 @@ const InventoryManagement = () => {
 
     return (
         <div className="flex flex-col gap-4 p-3">
-            <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
+            <Card className="rounded-2xl shadow-sm" styles={{ body: { padding: 16 } }}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <h2 className="text-lg font-bold text-slate-900">Quản lý tồn kho</h2>

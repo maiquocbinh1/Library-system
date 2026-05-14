@@ -15,7 +15,7 @@ function Header() {
     const [notifItems, setNotifItems] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const role = String(dataUser?.role || '').toLowerCase();
-    const isLibraryStaff = role === 'admin' || role === 'librarian';
+    const isLibraryStaff = role === 'admin' || role === 'librarian' || role === 'warehouse';
     const isPatron = Boolean(dataUser?.id) && !isLibraryStaff;
 
     const handleLogout = async () => {
@@ -179,7 +179,7 @@ function Header() {
             <div className="flex h-16 w-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
                 <div className="flex shrink-0 items-center">
                     <Link to="/" className="text-2xl font-bold text-blue-600">
-                        📚 Thư Viện
+                        📚 Thư viện
                     </Link>
                 </div>
 

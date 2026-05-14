@@ -11,7 +11,7 @@ function randomId() {
 async function findStaffSender(req) {
     const id = req?.user?.id;
     if (!id) {
-        return { senderEmail: 'no-reply@library.ptit.edu.vn', senderName: 'Hệ thống', staffId: '' };
+        return { senderEmail: 'no-reply@thuvien.local', senderName: 'Thư viện', staffId: '' };
     }
     let u = null;
     if (mongoose.isValidObjectId(String(id))) {
@@ -20,7 +20,7 @@ async function findStaffSender(req) {
     if (!u) {
         u = await UserMongo.findOne({ mysqlId: String(id) }).select('email fullName').lean();
     }
-    const email = u?.email ? String(u.email).toLowerCase().trim() : 'no-reply@library.ptit.edu.vn';
+    const email = u?.email ? String(u.email).toLowerCase().trim() : 'no-reply@thuvien.local';
     const name = u?.fullName ? String(u.fullName).trim() : 'Thư viện';
     return { senderEmail: email, senderName: name, staffId: String(id) };
 }

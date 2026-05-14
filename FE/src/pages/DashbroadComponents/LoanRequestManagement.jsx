@@ -314,7 +314,7 @@ const LoanRequestManagement = ({ presetFilter, pageTitle }) => {
         <div className="flex flex-col gap-4">
 
             {/* ── PANEL TRÊN: Xử lý phiếu / Trả bằng barcode ────────────── */}
-            <Card className="rounded-xl border-slate-200 shadow-sm" bodyStyle={{ padding: 16 }}>
+            <Card className="rounded-xl border-slate-200 shadow-sm" styles={{ body: { padding: 16 } }}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <h2 className="!mb-0 text-xl font-bold text-slate-900">{heading}</h2>
                     <Search
@@ -515,7 +515,7 @@ const LoanRequestManagement = ({ presetFilter, pageTitle }) => {
             </Card>
 
             {/* ── BẢNG DANH SÁCH PHIẾU ──────────────────────────────────────── */}
-            <Card className="rounded-xl shadow-sm" bodyStyle={{ padding: 12 }}>
+            <Card className="rounded-xl shadow-sm" styles={{ body: { padding: 12 } }}>
                 <Table
                     rowKey={(record) => record.id || record.userId}
                     columns={columns}

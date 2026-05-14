@@ -123,6 +123,24 @@ function escapeRegex(s) {
     return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Chuyển lỗi lưu Mongo/Mongoose thành BadRequestError để client nhận 400 + message rõ. */
+function mapMongoPersistError(err) {
+    if (!err) return err;
+    if (err.name === 'ValidationError') {
+        const msgs = Object.values(err.errors || {})
+            .map((e) => e.message)
+            .filter(Boolean);
+        return new BadRequestError(msgs.length ? msgs.join('; ') : 'Dữ liệu không hợp lệ');
+    }
+    if (err.name === 'CastError') {
+        return new BadRequestError('Giá trị gửi lên không đúng định dạng');
+    }
+    if (err.code === 11000) {
+        return new BadRequestError('Trùng dữ liệu (ví dụ mã sách). Vui lòng nhập giá trị khác.');
+    }
+    return err;
+}
+
 function toClientBookCopyRow(copyLean, bookLean) {
     const b = bookLean;
     const title = b?.title || b?.nameProduct || '';
@@ -579,15 +597,13 @@ class controllerBook {
             throw new BadRequestError('Sách không tồn tại');
         }
 
+        // bookCode / publishYear / pages xử lý riêng (tránh gán bookCode = '' từ vòng lặp → trùng unique).
         const allowed = [
-            'bookCode',
             'category',
             'category_1',
             'image',
             'description',
             'covertType',
-            'publishYear',
-            'pages',
             'language',
             'publisher',
             'publishingCompany',
@@ -616,7 +632,7 @@ class controllerBook {
 
         let pendingPrefixRename = null;
         if (req.body.bookCode !== undefined) {
-            const trimmed = String(req.body.bookCode || '').trim();
+            const trimmed = String(req.body.bookCode ?? '').trim();
             if (trimmed) {
                 const normalized = normalizeBookCode(trimmed);
                 if (!normalized) throw new BadRequestError('Mã sách không hợp lệ');
@@ -629,9 +645,8 @@ class controllerBook {
                     pendingPrefixRename = { from: oldCode, to: normalized };
                 }
                 product.bookCode = normalized;
-            } else {
-                product.bookCode = '';
             }
+            // Không gán bookCode = '' (nhiều tài liệu '' sẽ vi phạm unique index).
         }
 
         if (req.body.category_1 !== undefined || req.body.category !== undefined) {
@@ -642,8 +657,16 @@ class controllerBook {
             }
         }
 
-        if (req.body.publishYear !== undefined) product.publishYear = Number(req.body.publishYear);
-        if (req.body.pages !== undefined) product.pages = Number(req.body.pages);
+        if (req.body.publishYear !== undefined) {
+            const y = Number(req.body.publishYear);
+            if (!Number.isFinite(y)) throw new BadRequestError('Năm xuất bản không hợp lệ');
+            product.publishYear = y;
+        }
+        if (req.body.pages !== undefined) {
+            const p = Number(req.body.pages);
+            if (!Number.isFinite(p)) throw new BadRequestError('Số trang không hợp lệ');
+            product.pages = p;
+        }
 
         if (req.body.stock !== undefined) {
             // Payload `stock` từ FE hiện tại được hiểu là TỔNG SỐ BẢN SAO (totalCopies).
@@ -666,7 +689,11 @@ class controllerBook {
             }
         }
 
-        await product.save();
+        try {
+            await product.save();
+        } catch (e) {
+            throw mapMongoPersistError(e);
+        }
 
         if (pendingPrefixRename) {
             const { from, to } = pendingPrefixRename;
@@ -682,7 +709,11 @@ class controllerBook {
             }
         }
 
-        await syncBookInventoryFields(product._id);
+        try {
+            await syncBookInventoryFields(product._id);
+        } catch (e) {
+            throw mapMongoPersistError(e);
+        }
 
         new OK({
             message: 'Update product success',

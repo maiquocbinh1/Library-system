@@ -62,7 +62,7 @@ h1{font-size:17px;margin:0 0 8px;} .muted{color:#64748b;font-size:12px;} table{w
 td{padding:8px 0;vertical-align:top;border-bottom:1px solid #e2e8f0;} td:first-child{width:38%;color:#64748b;}
 .sign{margin-top:36px;font-size:12px;color:#64748b;}</style></head><body>
 <h1>${title}</h1>
-<p class="muted">Thư viện PTIT · ${when}</p>
+<p class="muted">Thư viện · ${when}</p>
 <table>
 <tr><td>MSV / MSG</td><td><strong>${escHtml(msv)}</strong></td></tr>
 <tr><td>Họ tên</td><td>${escHtml(name)}</td></tr>
@@ -249,21 +249,21 @@ const FineManagement = () => {
             {/* 3 thẻ tổng quan */}
             <Row gutter={16}>
                 <Col xs={24} sm={8}>
-                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 14 }}>
+                    <Card className="rounded-2xl shadow-sm" styles={{ body: { padding: 14 } }}>
                         <Statistic title={<span className="text-slate-500 text-xs">Tổng nợ phạt chưa thu</span>}
                             value={totalUnpaid} formatter={(v) => `${Number(v).toLocaleString('vi-VN')} đ`}
                             prefix={<WarningOutlined className="text-red-500" />} valueStyle={{ color: '#ef4444' }} />
                     </Card>
                 </Col>
                 <Col xs={24} sm={8}>
-                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 14 }}>
+                    <Card className="rounded-2xl shadow-sm" styles={{ body: { padding: 14 } }}>
                         <Statistic title={<span className="text-slate-500 text-xs">Đã thu hôm nay</span>}
                             value={todayCollected} formatter={(v) => `${Number(v).toLocaleString('vi-VN')} đ`}
                             prefix={<DollarCircleOutlined className="text-green-600" />} valueStyle={{ color: '#16a34a' }} />
                     </Card>
                 </Col>
                 <Col xs={24} sm={8}>
-                    <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 14 }}>
+                    <Card className="rounded-2xl shadow-sm" styles={{ body: { padding: 14 } }}>
                         <Statistic title={<span className="text-slate-500 text-xs">Phiếu phạt chưa thanh toán</span>}
                             value={unpaidCount} suffix="phiếu"
                             prefix={<CheckCircleOutlined className="text-amber-500" />} valueStyle={{ color: '#f59e0b' }} />
@@ -271,7 +271,7 @@ const FineManagement = () => {
                 </Col>
             </Row>
 
-            <Card className="rounded-2xl shadow-sm" bodyStyle={{ padding: 16 }}>
+            <Card className="rounded-2xl shadow-sm" styles={{ body: { padding: 16 } }}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-xl font-bold text-slate-900">Quản lý Phạt</h2>
                     <Space wrap>

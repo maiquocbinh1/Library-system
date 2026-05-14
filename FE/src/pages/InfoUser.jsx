@@ -146,7 +146,7 @@ function InfoUser() {
                                     <>
                                         Bạn còn <strong>{unpaidFineSummary.unpaidCount}</strong> phiếu phạt chưa thanh toán (tổng{' '}
                                         <strong>{Number(unpaidFineSummary.totalUnpaidAmount || 0).toLocaleString('vi-VN')} VNĐ</strong>
-                                        ). Vui lòng đến thư viện PTIT để nộp tiền theo quy định.
+                                        ). Vui lòng đến thư viện để nộp tiền theo quy định.
                                     </>
                                 }
                             />

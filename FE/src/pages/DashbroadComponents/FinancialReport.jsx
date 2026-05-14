@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Col, Form, Input, InputNumber, Modal, Row, Spin, Table, Tag, Typography } from 'antd';
-import { Bar } from '@ant-design/charts';
+import {
+    ResponsiveContainer,
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip as RechartsTooltip,
+    LabelList,
+} from 'recharts';
 import dayjs from 'dayjs';
 import { requestGetAllFines, requestGetAllProduct, requestGetStaffList } from '../../config/request';
 import { compareByBookCodeAsc } from '../../utils/bookCodeSort';
@@ -9,12 +18,36 @@ const { Title, Text } = Typography;
 
 const SALARY_STORE_KEY = 'finance_staff_salary_v1';
 
+const FIN_CHART_CARD =
+    'rounded-xl border border-slate-200/90 bg-white shadow-[0_4px_24px_-8px_rgba(15,23,42,0.1)]';
+
+const FIN_REV_GRADIENT_ID = 'finRevenueColGrad';
+
 function formatVnd(n) {
     return `${Number(n || 0).toLocaleString('vi-VN')}đ`;
 }
 
 function monthShortLabel(d) {
     return `T${dayjs(d).month() + 1}`;
+}
+
+function FinRevenueTooltip({ active, payload }) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0]?.payload;
+    const v = Number(row?.value ?? payload[0]?.value ?? 0);
+    return (
+        <div
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-md"
+            style={{ boxShadow: '0 6px 20px rgba(15, 23, 42, 0.1)' }}
+        >
+            <div className="text-xs font-semibold text-slate-500">Tháng</div>
+            <div className="font-semibold text-slate-900">{row?.month ?? '—'}</div>
+            <div className="mt-1.5 text-slate-600">
+                Thu phạt:{' '}
+                <span className="font-bold text-emerald-700">{v.toLocaleString('vi-VN')} đ</span>
+            </div>
+        </div>
+    );
 }
 
 function randInt(min, max) {
@@ -182,25 +215,6 @@ function FinancialReport() {
         return points;
     }, [fines]);
 
-    const barConfig = useMemo(
-        () => ({
-            data: chartData,
-            xField: 'month',
-            yField: 'value',
-            color: '#16a34a',
-            barStyle: { radius: [6, 6, 0, 0] },
-            tooltip: {
-                formatter: (d) => ({
-                    name: 'Thu phạt',
-                    value: `${Number(d?.value || 0).toLocaleString('vi-VN')} đ`,
-                }),
-            },
-            xAxis: { title: null },
-            yAxis: { label: { formatter: (v) => `${Number(v).toLocaleString('vi-VN')}` } },
-        }),
-        [chartData],
-    );
-
     const transactionRows = useMemo(() => {
         const paidRows = fines
             .filter((f) => f.status === 'PAID')
@@ -322,11 +336,57 @@ function FinancialReport() {
 
                 <Row gutter={[16, 16]} align="stretch">
                     <Col xs={24} lg={14}>
-                        <Card title="Xu hướng thu phạt (6 tháng)" className="h-full rounded-xl border border-slate-200 shadow-sm">
+                        <Card title="Xu hướng thu phạt (6 tháng)" className={`h-full ${FIN_CHART_CARD}`}>
                             {chartData.some((d) => d.value > 0) ? (
-                                <Bar {...barConfig} height={280} />
+                                <div className="h-[300px] w-full min-w-0 pt-1">
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <BarChart data={chartData} margin={{ top: 20, right: 12, left: 4, bottom: 8 }}>
+                                            <defs>
+                                                <linearGradient id={FIN_REV_GRADIENT_ID} x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#15803d" stopOpacity={1} />
+                                                    <stop offset="100%" stopColor="#4ade80" stopOpacity={1} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                            <XAxis
+                                                dataKey="month"
+                                                tick={{ fontSize: 13, fontWeight: 600, fill: '#374151' }}
+                                                axisLine={{ stroke: '#e2e8f0' }}
+                                                tickLine={false}
+                                            />
+                                            <YAxis
+                                                tick={{ fontSize: 11, fill: '#6b7280' }}
+                                                tickFormatter={(v) => Number(v).toLocaleString('vi-VN')}
+                                                axisLine={false}
+                                                tickLine={false}
+                                                width={52}
+                                            />
+                                            <RechartsTooltip content={<FinRevenueTooltip />} cursor={{ fill: 'rgba(22, 163, 74, 0.06)' }} />
+                                            <Bar
+                                                dataKey="value"
+                                                fill={`url(#${FIN_REV_GRADIENT_ID})`}
+                                                radius={[8, 8, 0, 0]}
+                                                maxBarSize={56}
+                                                animationDuration={800}
+                                                animationEasing="ease-out"
+                                                isAnimationActive
+                                            >
+                                                <LabelList
+                                                    dataKey="value"
+                                                    position="top"
+                                                    formatter={(v) => {
+                                                        const n = Number(v || 0);
+                                                        if (n <= 0) return '';
+                                                        return `${Math.round(n / 1000).toLocaleString('vi-VN')}k`;
+                                                    }}
+                                                    style={{ fill: '#15803d', fontSize: 11, fontWeight: 700 }}
+                                                />
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
                             ) : (
-                                <div className="flex h-[280px] items-center justify-center text-slate-400">Chưa có dữ liệu thu phạt trong 6 tháng gần đây</div>
+                                <div className="flex h-[300px] items-center justify-center text-slate-400">Chưa có dữ liệu thu phạt trong 6 tháng gần đây</div>
                             )}
                         </Card>
                     </Col>
